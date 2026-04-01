@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, LogIn, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
+import ParticlesBackground from '../components/ParticlesBackground';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -39,6 +40,7 @@ const Login = () => {
 
   return (
     <div className="min-h-[calc(100vh-80px)] flex items-center justify-center p-6 relative overflow-hidden">
+      <ParticlesBackground />
       {/* Background blobs */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-400/20 dark:bg-blue-600/10 rounded-full blur-3xl pointer-events-none"></div>
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-400/20 dark:bg-indigo-600/10 rounded-full blur-3xl pointer-events-none"></div>

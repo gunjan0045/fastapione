@@ -157,60 +157,70 @@ const Interview = () => {
 
     try {
       setLoadingFeedback(true);
-      const response = await api.post('/interview/answer/feedback', {
+      if (questionNumber < 8) setLoadingQuestion(true);
+
+      const feedbackPromise = api.post('/interview/answer/feedback', {
         resume_id: selectedResume.id,
         question: currentQuestion.question,
         answer: userAnswer
       });
 
-      // Store Q&A
-      setQuestionsAndAnswers([
-        ...questionsAndAnswers,
-        {
-          question: currentQuestion.question,
-          answer: userAnswer
-        }
+      const nextQuestionPromise = questionNumber < 8 
+        ? api.post('/interview/question/generate', {
+            resume_id: selectedResume.id,
+            question_number: questionNumber + 1
+          })
+        : null;
+
+      const [feedbackRes, nextQuestionRes] = await Promise.all([
+        feedbackPromise, 
+        nextQuestionPromise
       ]);
 
-      // Add feedback to display
+      const newQa = [...questionsAndAnswers, { question: currentQuestion.question, answer: userAnswer }];
+      setQuestionsAndAnswers(newQa);
+
       setFeedback([
         ...feedback,
-        {
-          type: 'answer',
-          text: `Your Answer: ${userAnswer}`,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        },
-        {
-          type: 'feedback',
-          text: response.data.feedback,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }
+        { type: 'answer', text: `Your Answer: ${userAnswer}`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
+        { type: 'feedback', text: feedbackRes.data.feedback, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
       ]);
 
-      // Ask if user wants to continue (max 8 questions)
       if (questionNumber < 8) {
-        await getNextQuestion();
+        setCurrentQuestion(nextQuestionRes.data);
+        setQuestionNumber(questionNumber + 1);
+        setUserAnswer('');
       } else {
-        // Generate summary
-        generateInterviewSummary();
+        generateInterviewSummary(newQa);
       }
     } catch (err) {
       console.error("Error submitting answer:", err);
       setError("Failed to process your answer. Please try again.");
     } finally {
       setLoadingFeedback(false);
+      setLoadingQuestion(false);
     }
   };
 
   // Generate interview summary
-  const generateInterviewSummary = async () => {
+  const generateInterviewSummary = async (qaList = questionsAndAnswers) => {
     try {
       const response = await api.post('/interview/summary', {
         resume_id: selectedResume.id,
-        questions_and_answers: questionsAndAnswers
+        questions_and_answers: qaList
       });
-      setInterviewSummary(response.data.summary);
+      const summaryText = response.data.summary;
+      setInterviewSummary(summaryText);
       setShowSummary(true);
+
+      // Cleanly extract score and save history
+      const scoreMatch = summaryText.match(/Score.*?(\d{1,3})/i);
+      const extractedScore = scoreMatch ? parseInt(scoreMatch[1], 10) : 0;
+      await api.post('/interview/history', {
+        score: extractedScore,
+        feedback: summaryText
+      });
+
     } catch (err) {
       console.error("Error generating summary:", err);
       setError("Failed to generate interview summary.");
@@ -273,7 +283,18 @@ const Interview = () => {
   };
 
   // Stop Interview
-  const stopInterview = async () => {
+  const stopInterview = async (isManual = false) => {
+    if (isManual) {
+      const confirmStop = window.confirm("Are you sure you want to stop the interview and see your results?");
+      if (!confirmStop) return;
+      
+      if (questionsAndAnswers.length > 0) {
+        generateInterviewSummary();
+      } else {
+        resetInterview();
+      }
+    }
+
     setIsInterviewing(false);
 
     if (stream) {
@@ -373,7 +394,7 @@ const Interview = () => {
               Start Interview
             </button>
             <button
-              onClick={stopInterview}
+              onClick={() => stopInterview(true)}
               disabled={!isInterviewing}
               className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition"
             >

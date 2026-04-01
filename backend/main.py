@@ -15,8 +15,8 @@ app = FastAPI(title="AI Interview Coach API")
 
 # ✅ CORS FIX (IMPORTANT)
 origins = [
-    "http://localhost:5174/",
-    "http://127.0.0.1:5174/"
+    "http://localhost:5173",
+    "http://127.0.0.1:5173"
 ]
 
 app.add_middleware(
@@ -30,7 +30,7 @@ app.add_middleware(
 # ✅ Routers with prefix (clean structure)
 app.include_router(auth_routes.router, prefix="/auth", tags=["Auth"])
 app.include_router(resume_routes.router, prefix="/resume", tags=["Resume"])
-app.include_router(interview_routes.routerx, prefix="/interview", tags=["Interview"])
+app.include_router(interview_routes.router, prefix="/interview", tags=["Interview"])
 
 @app.get("/")
 def read_root():

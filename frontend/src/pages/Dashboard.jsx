@@ -9,6 +9,7 @@ import {
   ResponsiveContainer, AreaChart, Area 
 } from 'recharts';
 import api from '../utils/api';
+import ParticlesBackground from '../components/ParticlesBackground';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -76,6 +77,8 @@ const Dashboard = () => {
   };
 
   return (
+    <>
+    <ParticlesBackground />
     <div className="pt-32 pb-20 px-6 max-w-7xl mx-auto relative z-10 space-y-8">
       
       {/* Header Stats */}
@@ -245,6 +248,7 @@ const Dashboard = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 

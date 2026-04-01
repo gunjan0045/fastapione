@@ -134,3 +134,23 @@ def get_resumes(
     ).all()
 
     return resumes
+
+# ✅ Delete resume
+@router.delete("/{resume_id}")
+def delete_resume(
+    resume_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    resume = db.query(models.Resume).filter(
+        models.Resume.id == resume_id,
+        models.Resume.user_id == current_user.id
+    ).first()
+
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    db.delete(resume)
+    db.commit()
+
+    return {"message": "Resume deleted successfully"}

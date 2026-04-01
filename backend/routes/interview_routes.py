@@ -12,7 +12,7 @@ from auth import get_current_user, SECRET_KEY, ALGORITHM
 from jose import jwt, JWTError
 from typing import List
 from pydantic import BaseModel
-from ai_service import generate_interview_question, generate_feedback, generate_interview_summary
+from ai_service import generate_interview_question, generate_feedback, generate_interview_summary, generate_chat_response
 
 # ✅ Pydantic models
 class GetQuestionRequest(BaseModel):
@@ -27,6 +27,13 @@ class SubmitAnswerRequest(BaseModel):
 class InterviewSummaryRequest(BaseModel):
     resume_id: int
     questions_and_answers: List[dict]
+
+class CreateHistoryRequest(BaseModel):
+    score: int
+    feedback: str
+
+class ChatMessageRequest(BaseModel):
+    message: str
 
 router = APIRouter(tags=["interview"])
 
@@ -57,20 +64,31 @@ def get_interview_history(
 
 @router.post("/history")
 def create_interview_history(
-    score: int,
-    feedback: str,
+    request: CreateHistoryRequest,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
     record = models.InterviewHistory(
         user_id=current_user.id,
-        score=score,
-        feedback=feedback
+        score=request.score,
+        feedback=request.feedback
     )
     db.add(record)
     db.commit()
     db.refresh(record)
     return record
+
+
+@router.post("/chat")
+def chat_with_bot(
+    request: ChatMessageRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    result = generate_chat_response(request.message)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error"))
+    return {"success": True, "reply": result.get("reply")}
 
 
 # ---------------- AI QUESTIONS ----------------
