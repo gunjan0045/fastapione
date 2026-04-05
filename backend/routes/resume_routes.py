@@ -7,8 +7,11 @@ import re
 from database import get_db
 import models
 import schemas
+import schemas
 from auth import get_current_user
 from typing import List
+import json
+from ai_service import parse_resume_with_ai
 
 # ❗ REMOVE prefix here (main.py already handles it)
 router = APIRouter()
@@ -85,19 +88,38 @@ async def upload_resume(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading PDF: {str(e)}")
     
-    # Extract profile
-    profile = extract_profile_from_text(text)
-
-    # ✅ Simple skills extraction (safe)
-    skills = []
-    if nlp:
-        doc_nlp = nlp(text)
-        for ent in doc_nlp.ents:
-            if ent.label_ in ["ORG", "PRODUCT"]:
-                skills.append(ent.text.strip())
-
-    # Clean skills
-    skills = list(set(skills))[:15]
+    # ✅ Call new structured AI parsing
+    parsing_result = parse_resume_with_ai(text)
+    
+    parsed_json = None
+    if parsing_result.get("success"):
+        data = parsing_result["data"]
+        parsed_json = json.dumps(data)
+        
+        # Hydrate profile
+        profile = {
+            "name": data.get("name"),
+            "email": data.get("email"),
+            "phone": data.get("phone"),
+            "address": data.get("address")
+        }
+        
+        # Hydrate arbitrary basic skills for the short dashboard cards
+        raw_skills = data.get("technical_skills", [])
+        if isinstance(raw_skills, list):
+            skills = list(set([s if isinstance(s, str) else str(s) for s in raw_skills]))[:15]
+        else:
+            skills = []
+    else:
+        print("Fallback to basic extraction due to AI failure")
+        profile = extract_profile_from_text(text)
+        skills = []
+        if nlp:
+            doc_nlp = nlp(text)
+            for ent in doc_nlp.ents:
+                if ent.label_ in ["ORG", "PRODUCT"]:
+                    skills.append(ent.text.strip())
+        skills = list(set(skills))[:15]
 
     # Save to DB
     resume_record = models.Resume(
@@ -108,7 +130,8 @@ async def upload_resume(
         email=profile.get("email"),
         phone=profile.get("phone"),
         address=profile.get("address"),
-        skills=",".join(skills) if skills else ""
+        skills=",".join(skills) if skills else "",
+        parsed_data=parsed_json
     )
 
     db.add(resume_record)

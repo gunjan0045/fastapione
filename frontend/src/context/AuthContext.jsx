@@ -8,7 +8,7 @@ export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [token, setToken] = useState(() => localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
 
   const login = (newToken) => {
@@ -20,21 +20,26 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
     setToken(null);
     setUser(null);
+    // don't hard reload, let React routing handle it if possible, but api will redirect on 401
   };
 
   useEffect(() => {
     const fetchUser = async () => {
-      if (token) {
-        try {
-          const res = await api.get('/auth/me');
-          setUser(res.data);
-        } catch (error) {
-          console.error("Token invalid or expired", error);
-          logout();
-        }
+      if (!token) {
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+      try {
+        const res = await api.get('/auth/me');
+        setUser(res.data);
+      } catch (error) {
+        console.error("Token invalid or expired", error);
+        logout();
+      } finally {
+        setLoading(false);
+      }
     };
+    
     fetchUser();
   }, [token]);
 

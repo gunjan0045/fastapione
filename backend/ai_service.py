@@ -1,17 +1,18 @@
 import os
 import json
-import google.generativeai as genai
+from google import genai
 
 # ✅ Load API key
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+client = None
 if not GEMINI_API_KEY:
     print("WARNING: GEMINI_API_KEY is missing from environment. AI features will fail.")
 else:
-    genai.configure(api_key=GEMINI_API_KEY)
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Use gemini-flash-latest as the default model
-model = genai.GenerativeModel("gemini-flash-latest")
+# Use gemini-2.5-flash as the default model
+MODEL_ID = "gemini-2.5-flash"
 
 # ✅ SYSTEM PROMPT
 SYSTEM_PROMPT = """You are an expert technical interviewer with 15+ years of experience.
@@ -28,6 +29,7 @@ Return ONLY JSON without markdown formatting:
 
 def clean_json_response(text: str) -> str:
     # Some models return ```json ... ``` tags. Clean them up.
+    text = text.strip()
     if text.startswith("```json"):
         text = text[7:]
     if text.startswith("```"):
@@ -41,7 +43,10 @@ def generate_interview_question(resume_text: str, question_count: int = 1) -> di
     try:
         prompt = f"{SYSTEM_PROMPT}\n\nResume:\n{resume_text}\n\nQuestion #{question_count}"
         
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model=MODEL_ID,
+            contents=prompt
+        )
         text = clean_json_response(response.text)
 
         try:
@@ -65,6 +70,72 @@ def generate_interview_question(resume_text: str, question_count: int = 1) -> di
         return {"success": False, "error": str(e)}
 
 
+# ✅ RESUME PARSING (NEW)
+RESUME_PARSER_PROMPT = """Role: You are a Professional Resume Parser. Your task is to analyze the uploaded resume and extract every single detail into a structured format.
+
+Step 1: Structural Analysis (Markdown conversion)
+Read the text and identify headings (Name, Contact, Education, Skills, Projects, Experience). Mentally organize them.
+
+Step 2: Detail Extraction
+Extract the following precisely:
+- Candidate Name: Top-most prominent name.
+- Contact Info: Extract Email, Phone, LinkedIn, and GitHub URL. Address/Location if present.
+- Technical Skills: Every programming language, framework, and tool mentioned.
+- Personal Skills: Soft skills like Leadership, Communication, etc.
+- Experience: Role, Company, Duration, and a detailed description.
+- Education: Degree, Institution, and Year.
+- Projects: Each project title and its detailed description.
+- Certifications, Achievements, and Languages.
+
+Step 3: Output Formatting
+Provide the data in a clean, strictly formatted JSON object. If a section is missing in the resume, return an empty array [] or empty string "".
+Do not miss any bullet point or detail. Every single word from the resume must be categorized.
+
+You MUST return EXACTLY this JSON structure and nothing else. No markdown wrappers.
+{
+  "name": "",
+  "email": "",
+  "phone": "",
+  "address": "",
+  "linkedin": "",
+  "github": "",
+  "summary": "",
+  "technical_skills": ["",""],
+  "personal_skills": ["",""],
+  "experience": [
+    {"title": "", "company": "", "date": "", "description": ""}
+  ],
+  "education": [
+    {"degree": "", "institution": "", "date": ""}
+  ],
+  "projects": ["", ""],
+  "certifications": ["", ""],
+  "achievements": ["", ""],
+  "languages": ["", ""]
+}
+"""
+
+def parse_resume_with_ai(resume_text: str) -> dict:
+    try:
+        prompt = f"{RESUME_PARSER_PROMPT}\n\nRESUME TEXT:\n{resume_text}"
+        response = client.models.generate_content(
+            model=MODEL_ID,
+            contents=prompt
+        )
+        text = clean_json_response(response.text)
+
+        try:
+            data = json.loads(text)
+            return {"success": True, "data": data}
+        except json.JSONDecodeError:
+            print("FAILED TO PARSE JSON FROM Gemini:", text)
+            return {"success": False, "error": "Invalid JSON mapping from AI"}
+            
+    except Exception as e:
+        print("PARSE ERROR:", e)
+        return {"success": False, "error": str(e)}
+
+
 # ✅ FEEDBACK (FIXED)
 def generate_feedback(resume_text: str, question: str, user_response: str) -> dict:
     try:
@@ -81,7 +152,10 @@ Please give feedback on the answer. You MUST follow these rules exactly:
 3. Do not use tricky technical jargon or long paragraphs.
 4. Conclude with a clear score out of 10.
 """
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model=MODEL_ID,
+            contents=prompt
+        )
 
         return {
             "success": True,
@@ -92,7 +166,7 @@ Please give feedback on the answer. You MUST follow these rules exactly:
         print("FEEDBACK ERROR:", e)
         return {"success": False, "error": str(e)}
 
-
+ 
 # ✅ SUMMARY (FIXED)
 def generate_interview_summary(resume_text: str, questions_and_answers: list) -> dict:
     try:
@@ -118,7 +192,10 @@ Please provide a clear interview summary. You MUST follow these rules exactly:
    - Areas to Improve (bullet points, very polite)
    - Final Verdict (one simple, encouraging sentence)
 """
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model=MODEL_ID,
+            contents=prompt
+        )
 
         return {
             "success": True,
@@ -129,7 +206,7 @@ Please provide a clear interview summary. You MUST follow these rules exactly:
         print("SUMMARY ERROR:", e)
         return {"success": False, "error": str(e)}
 
-# ✅ CHATBOT HELPER
+# ✅ CHATBOT HELPERguloyugliu
 def generate_chat_response(user_message: str) -> dict:
     try:
         prompt = f"""You are 'CoachBot', the automated conversational assistant for the 'AI Interview Coach' web application.
@@ -149,7 +226,10 @@ Rules for your response:
 
 User's Query: {user_message}
 """
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model=MODEL_ID,
+            contents=prompt
+        )
 
         return {
             "success": True,
@@ -157,4 +237,39 @@ User's Query: {user_message}
         }
     except Exception as e:
         print("ERROR:", e)
+        return {"success": False, "error": str(e)}
+
+# ✅ BODY LANGUAGE EVALUATOR
+def evaluate_body_language_frame(base64_image_data: str) -> dict:
+    try:
+        import base64
+        # Google GenAI accepts binary data directly for inline data
+        image_bytes = base64.b64decode(base64_image_data)
+        
+        prompt = """Analyze the candidate's body language in this interview frame.
+        Check for:
+        1. Eye contact (Is the person looking at the camera/screen or looking away?)
+        2. Posture (Are they sitting upright, slouching, leaning too close?)
+        3. Face visibility (Is the face clearly visible?)
+        
+        Provide a body_language_score from 0 to 100 representing their strict professional appearance.
+        Provide a 1-sentence specific feedback (e.g., 'You maintained good eye contact' or 'Try to look more at the camera.').
+
+        Return STRICTLY JSON without markdown:
+        {
+            "body_language_score": 85,
+            "feedback": "You maintained good eye contact but looked away slightly."
+        }
+        """
+        response = client.models.generate_content(
+            model=MODEL_ID,
+            contents=[
+                {"mime_type": "image/jpeg", "data": image_bytes},
+                prompt
+            ]
+        )
+        data = json.loads(clean_json_response(response.text))
+        return {"success": True, "data": data}
+    except Exception as e:
+        print("BODY LANGUAGE ERROR:", e)
         return {"success": False, "error": str(e)}

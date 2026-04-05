@@ -12,12 +12,16 @@ from auth import get_current_user, SECRET_KEY, ALGORITHM
 from jose import jwt, JWTError
 from typing import List
 from pydantic import BaseModel
-from ai_service import generate_interview_question, generate_feedback, generate_interview_summary, generate_chat_response
+from ai_service import generate_interview_question, generate_feedback, generate_interview_summary, generate_chat_response, evaluate_body_language_frame
+from interview_engine import generate_initial_questions, evaluate_and_generate_followup, analyze_submitted_code
 
 # ✅ Pydantic models
 class GetQuestionRequest(BaseModel):
     resume_id: int
     question_number: int = 1
+
+class EvaluateBodyLanguageRequest(BaseModel):
+    frame_base64: str
 
 class SubmitAnswerRequest(BaseModel):
     resume_id: int
@@ -29,8 +33,16 @@ class InterviewSummaryRequest(BaseModel):
     questions_and_answers: List[dict]
 
 class CreateHistoryRequest(BaseModel):
-    score: int
-    feedback: str
+    resume_id: int
+    questions: str
+    answers: str
+    per_question_feedback: str
+    technical_score: int
+    communication_score: int
+    body_language_score: int
+    final_score: int
+    final_feedback: str
+    body_language_feedback: str
 
 class ChatMessageRequest(BaseModel):
     message: str
@@ -48,6 +60,112 @@ def get_face_mesh():
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5
     )
+
+
+# ---------------- EXPERT BOOKING ----------------
+
+@router.post("/book-expert")
+def book_expert(
+    request: schemas.HumanBookingCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    booking = models.HumanBooking(
+        user_id=current_user.id,
+        domain=request.domain,
+        experience_level=request.experience_level,
+        preferred_date=request.preferred_date,
+        preferred_time=request.preferred_time,
+        duration=request.duration,
+        notes=request.notes
+    )
+    db.add(booking)
+    db.commit()
+    db.refresh(booking)
+    return {"success": True, "booking_id": booking.id}
+
+
+# ---------------- DYNAMIC AI INTERVIEW ENGINE ----------------
+
+class StartDynamicRequest(BaseModel):
+    resume_id: int
+    mode: str
+
+@router.post("/start-dynamic")
+def start_dynamic_interview(
+    request: StartDynamicRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    resume = db.query(models.Resume).filter(
+        models.Resume.id == request.resume_id,
+        models.Resume.user_id == current_user.id
+    ).first()
+
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    parsed_data = {}
+    if resume.parsed_data:
+        try:
+            parsed_data = json.loads(resume.parsed_data)
+        except Exception:
+            pass
+
+    res = generate_initial_questions(parsed_data, request.mode)
+    if not res.get("success"):
+        raise HTTPException(status_code=500, detail=res.get("error"))
+
+    return res["data"]
+
+
+class EvaluateDynamicRequest(BaseModel):
+    question: str
+    answer: str
+    difficulty: str
+    history: List[dict]
+
+@router.post("/evaluate-dynamic")
+def evaluate_dynamic(
+    request: EvaluateDynamicRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    res = evaluate_and_generate_followup(request.question, request.history, request.answer, request.difficulty)
+    if not res.get("success"):
+        raise HTTPException(status_code=500, detail=res.get("error"))
+
+    return res["data"]
+
+
+class EvaluateCodeRequest(BaseModel):
+    question: str
+    language: str
+    code: str
+
+@router.post("/evaluate-code")
+def evaluate_code(
+    request: EvaluateCodeRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    res = analyze_submitted_code(request.question, request.language, request.code)
+    if not res.get("success"):
+        raise HTTPException(status_code=500, detail=res.get("error"))
+
+    return res["data"]
+
+
+@router.post("/evaluate-body-language")
+def evaluate_body_language(
+    request: EvaluateBodyLanguageRequest,
+    current_user: models.User = Depends(get_current_user)
+):
+    res = evaluate_body_language_frame(request.frame_base64)
+    if not res.get("success"):
+        raise HTTPException(status_code=500, detail=res.get("error"))
+
+    return res["data"]
 
 
 # ---------------- HISTORY ----------------
@@ -70,8 +188,16 @@ def create_interview_history(
 ):
     record = models.InterviewHistory(
         user_id=current_user.id,
-        score=request.score,
-        feedback=request.feedback
+        resume_id=request.resume_id,
+        questions=request.questions,
+        answers=request.answers,
+        per_question_feedback=request.per_question_feedback,
+        technical_score=request.technical_score,
+        communication_score=request.communication_score,
+        body_language_score=request.body_language_score,
+        final_score=request.final_score,
+        final_feedback=request.final_feedback,
+        body_language_feedback=request.body_language_feedback
     )
     db.add(record)
     db.commit()

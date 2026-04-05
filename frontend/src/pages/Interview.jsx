@@ -1,508 +1,525 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Camera, Mic, Play, Square, MessageSquare, AlertCircle, Loader2, Send, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Camera, Mic, MicOff, CameraOff, Square, Play, Pause, MessageSquare, AlertCircle, Loader2, Send, Code2, CheckCircle2, Bot } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
+import CodingInterviewPanel from '../components/CodingInterviewPanel';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const Interview = () => {
-  const auth = useAuth();
-  const token = auth?.token || localStorage.getItem('token');
+  const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const searchParams = new URLSearchParams(location.search);
   
-  // Interview state
-  const [isInterviewing, setIsInterviewing] = useState(false);
-  const [stream, setStream] = useState(null);
-  const [transcript, setTranscript] = useState('');
-  const [error, setError] = useState('');
+  const resumeId = searchParams.get('resumeId');
+  const type = searchParams.get('type') || 'Mixed';
+  const initialDiff = searchParams.get('diff') || 'Medium';
+
+  // Core State
+  const [difficulty, setDifficulty] = useState(initialDiff);
+  const [question, setQuestion] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [chatLog, setChatLog] = useState([]);
   
-  // Resume selection
-  const [resumes, setResumes] = useState([]);
-  const [selectedResume, setSelectedResume] = useState(null);
-  const [loadingResumes, setLoadingResumes] = useState(false);
-  
-  // AI Interview state
-  const [currentQuestion, setCurrentQuestion] = useState(null);
-  const [questionNumber, setQuestionNumber] = useState(1);
+  // UI State
   const [userAnswer, setUserAnswer] = useState('');
-  const [isAnswering, setIsAnswering] = useState(false);
-  const [feedback, setFeedback] = useState([]);
-  const [loadingQuestion, setLoadingQuestion] = useState(false);
-  const [loadingFeedback, setLoadingFeedback] = useState(false);
-  const [showSummary, setShowSummary] = useState(false);
-  const [interviewSummary, setInterviewSummary] = useState('');
-  
-  // Question/Answer history
-  const [questionsAndAnswers, setQuestionsAndAnswers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [codingMode, setCodingMode] = useState(type === 'Coding');
+  const [codeLanguage, setCodeLanguage] = useState('python');
+  const [status, setStatus] = useState('Ready'); // Ready, Running, Paused, Completed
 
+  // AV State & Controls
   const videoRef = useRef(null);
-  const wsRef = useRef(null);
-  const intervalRef = useRef(null);
+  const canvasRef = useRef(null);
   const recognitionRef = useRef(null);
+  const pollingInterval = useRef(null);
+  const [stream, setStream] = useState(null);
+  const [camOn, setCamOn] = useState(true);
+  const [micOn, setMicOn] = useState(true);
 
-  // Load resumes on mount
+  // Advanced Scoring
+  const [scores, setScores] = useState({
+    technical: 0,
+    communication: 0,
+    problem_solving: 0,
+    confidence: 0,
+    body_language: 0
+  });
+
+  // Separate unmount cleanup to avoid killing camera on status change
   useEffect(() => {
-    fetchResumes();
+    return () => {
+      stopAV();
+      if (recognitionRef.current) recognitionRef.current.stop();
+      if (pollingInterval.current) clearInterval(pollingInterval.current);
+    };
   }, []);
 
-  // Initialize Speech Recognition
+  // Protect back navigation mapping
   useEffect(() => {
+    if (!resumeId) {
+      navigate('/dashboard');
+      return;
+    }
+
+    const unblock = () => {
+       if (status === 'Running' || status === 'Paused') {
+         if(!window.confirm("Are you sure you want to leave this interview?")) {
+            window.history.pushState(null, "", window.location.href);
+         } else {
+            endInterview(true);
+         }
+       }
+    };
+
+    window.history.pushState(null, "", window.location.href);
+    window.addEventListener('popstate', unblock);
+
+    const handleBeforeUnload = (e) => {
+      if (status === 'Running' || status === 'Paused') {
+        const msg = "Interview in progress! Are you sure you want to leave?";
+        e.returnValue = msg;
+        return msg;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('popstate', unblock);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [status, navigate, resumeId]);
+
+  // Handle AV Init
+  useEffect(() => {
+    const initAV = async () => {
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        setStream(s);
+      } catch (e) {
+        console.warn("Camera/Mic restricted", e);
+      }
+    };
+
+    if(status === 'Ready') {
+      initAV();
+      initSpeech();
+    }
+  }, []); // Run ONLY once on mount
+
+  // Auto-bind stream to video tag to prevent black screens on re-renders
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream, camOn]);
+
+  const stopAV = () => {
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+    }
+    setStream(null);
+  };
+
+  const toggleCamera = () => {
+    if (stream) {
+      stream.getVideoTracks().forEach(t => t.enabled = !camOn);
+    }
+    setCamOn(!camOn);
+  };
+
+  const toggleMic = () => {
+    if (stream) {
+      stream.getAudioTracks().forEach(t => t.enabled = !micOn);
+    }
+    setMicOn(!micOn);
+  };
+
+  const initSpeech = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
-      recognition.lang = 'en-US';
-
-      recognition.onresult = (event) => {
-        let finalTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          finalTranscript += event.results[i][0].transcript + ' ';
+      recognition.onresult = (e) => {
+        let final = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+            if (e.results[i].isFinal) {
+                final += e.results[i][0].transcript;
+            }
         }
-        if (finalTranscript) {
-          setUserAnswer((prev) => prev + ' ' + finalTranscript);
-        }
+        if(final.trim()) setUserAnswer(prev => prev + (prev ? ' ' : '') + final.trim());
       };
-
-      recognition.onerror = (event) => {
-        console.error("Speech Recognition Error:", event.error);
-      };
-
       recognitionRef.current = recognition;
-    } else {
-      console.warn("Speech Recognition not supported in this browser.");
-    }
-
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-      stopInterview();
-    };
-  }, []);
-
-  // Fetch user's resumes
-  const fetchResumes = async () => {
-    try {
-      setLoadingResumes(true);
-      const response = await api.get('/resume/');
-      setResumes(response.data);
-      if (response.data.length > 0) {
-        setSelectedResume(response.data[0]);
-      }
-    } catch (err) {
-      console.error("Error fetching resumes:", err);
-      setError("Failed to load resumes. Please upload a resume first.");
-    } finally {
-      setLoadingResumes(false);
     }
   };
 
-  // Get the first question
-  const getFirstQuestion = async () => {
-    if (!selectedResume) {
-      setError("Please select a resume first");
-      return;
-    }
-
+  const handleStartInterview = async (retryCount = 0) => {
+    setStatus('Running');
+    setLoading(true);
     try {
-      setLoadingQuestion(true);
-      setError('');
-      const response = await api.post('/interview/question/generate', {
-        resume_id: selectedResume.id,
-        question_number: 1
+      const res = await api.post('/interview/start-dynamic', {
+        resume_id: parseInt(resumeId),
+        mode: type
       });
-      setCurrentQuestion(response.data);
-      setQuestionNumber(1);
-      setUserAnswer('');
-      setQuestionsAndAnswers([]);
+      setQuestion(res.data);
+      addLog('ai', res.data.question);
       
-      // Add feedback message
-      setFeedback([{
-        type: 'system',
-        text: 'Interview started! Answer the question with your microphone or type below.',
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }]);
-    } catch (err) {
-      console.error("Error getting question:", err);
-      setError("Failed to load interview question. Check if API key is set.");
-    } finally {
-      setLoadingQuestion(false);
-    }
-  };
-
-  // Get next question
-  const getNextQuestion = async () => {
-    try {
-      setLoadingQuestion(true);
-      const nextQuestionNumber = questionNumber + 1;
-      const response = await api.post('/interview/question/generate', {
-        resume_id: selectedResume.id,
-        question_number: nextQuestionNumber
-      });
-      setCurrentQuestion(response.data);
-      setQuestionNumber(nextQuestionNumber);
-      setUserAnswer('');
-    } catch (err) {
-      console.error("Error getting next question:", err);
-      setError("Failed to load next question.");
-    } finally {
-      setLoadingQuestion(false);
-    }
-  };
-
-  // Submit answer and get feedback
-  const submitAnswer = async () => {
-    if (!userAnswer.trim()) {
-      setError("Please provide an answer before submitting.");
-      return;
-    }
-
-    try {
-      setLoadingFeedback(true);
-      if (questionNumber < 8) setLoadingQuestion(true);
-
-      const feedbackPromise = api.post('/interview/answer/feedback', {
-        resume_id: selectedResume.id,
-        question: currentQuestion.question,
-        answer: userAnswer
-      });
-
-      const nextQuestionPromise = questionNumber < 8 
-        ? api.post('/interview/question/generate', {
-            resume_id: selectedResume.id,
-            question_number: questionNumber + 1
-          })
-        : null;
-
-      const [feedbackRes, nextQuestionRes] = await Promise.all([
-        feedbackPromise, 
-        nextQuestionPromise
-      ]);
-
-      const newQa = [...questionsAndAnswers, { question: currentQuestion.question, answer: userAnswer }];
-      setQuestionsAndAnswers(newQa);
-
-      setFeedback([
-        ...feedback,
-        { type: 'answer', text: `Your Answer: ${userAnswer}`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
-        { type: 'feedback', text: feedbackRes.data.feedback, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
-      ]);
-
-      if (questionNumber < 8) {
-        setCurrentQuestion(nextQuestionRes.data);
-        setQuestionNumber(questionNumber + 1);
-        setUserAnswer('');
+      // Setup Body Language Polling Every 10s
+      if(!pollingInterval.current) {
+        pollingInterval.current = setInterval(pollBodyLanguage, 10000);
+      }
+    } catch (e) {
+      if (retryCount < 1) {
+         addLog('system', 'Failed to initialize AI Engine. Retrying once in 3 seconds...');
+         setTimeout(() => handleStartInterview(retryCount + 1), 3000);
       } else {
-        generateInterviewSummary(newQa);
+         addLog('system', 'AI Engine failed repeatedly. Please check your backend properties or wait. Backend returned 500.');
+         setStatus('Ready');
       }
-    } catch (err) {
-      console.error("Error submitting answer:", err);
-      setError("Failed to process your answer. Please try again.");
     } finally {
-      setLoadingFeedback(false);
-      setLoadingQuestion(false);
+      if (retryCount >= 1 || status === 'Running') {
+         setLoading(false);
+      }
     }
   };
 
-  // Generate interview summary
-  const generateInterviewSummary = async (qaList = questionsAndAnswers) => {
-    try {
-      const response = await api.post('/interview/summary', {
-        resume_id: selectedResume.id,
-        questions_and_answers: qaList
-      });
-      const summaryText = response.data.summary;
-      setInterviewSummary(summaryText);
-      setShowSummary(true);
-
-      // Cleanly extract score and save history
-      const scoreMatch = summaryText.match(/Score.*?(\d{1,3})/i);
-      const extractedScore = scoreMatch ? parseInt(scoreMatch[1], 10) : 0;
-      await api.post('/interview/history', {
-        score: extractedScore,
-        feedback: summaryText
-      });
-
-    } catch (err) {
-      console.error("Error generating summary:", err);
-      setError("Failed to generate interview summary.");
-    }
-  };
-
-  // Start Interview (with camera and speech)
-  const startInterview = async () => {
-    setError('');
-    setTranscript('');
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      setStream(mediaStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-      }
-
-      const wsUrl = `ws://localhost:8000/interview/ws?token=${token}`;
-      const ws = new WebSocket(wsUrl);
-
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'start_session' }));
-        
-        const canvas = document.createElement('canvas');
-        intervalRef.current = setInterval(() => {
-          if (videoRef.current && ws.readyState === WebSocket.OPEN) {
-            canvas.width = 320;
-            canvas.height = 240;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-            
-            ws.send(JSON.stringify({ 
-              type: 'video_frame', 
-              frame: canvas.toDataURL('image/jpeg', 0.5) 
-            }));
-          }
-        }, 1000);
-      };
-
-      ws.onerror = (err) => {
-        setError("WebSocket connection failed.");
-      };
-
-      wsRef.current = ws;
-
-      // Start speech recognition
-      if (recognitionRef.current) {
-        recognitionRef.current.start();
-      }
-
-      setIsInterviewing(true);
+  const pollBodyLanguage = async () => {
+    if (!videoRef.current || !canvasRef.current || status !== 'Running') return;
+    
+    // Draw to canvas
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (video.videoWidth > 0 && video.videoHeight > 0) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg');
       
-      // Get first question
-      await getFirstQuestion();
-
-    } catch (err) {
-      console.error("Media Error", err);
-      setError("Camera/Mic access denied. Check browser permissions.");
-    }
-  };
-
-  // Stop Interview
-  const stopInterview = async (isManual = false) => {
-    if (isManual) {
-      const confirmStop = window.confirm("Are you sure you want to stop the interview and see your results?");
-      if (!confirmStop) return;
-      
-      if (questionsAndAnswers.length > 0) {
-        generateInterviewSummary();
-      } else {
-        resetInterview();
+      try {
+        const res = await api.post('/interview/evaluate-body-language', {
+          frame_base64: dataUrl
+        });
+        if(res.data && res.data.feedback) {
+           addLog('system', `[Body Language Alert] ${res.data.feedback}`);
+           // Update average body score silently
+           setScores(s => ({
+              ...s, 
+              body_language: s.body_language === 0 ? res.data.body_language_score : Math.round((s.body_language + res.data.body_language_score) / 2)
+           }));
+        }
+      } catch (err) {
+        console.warn("Body Language Polling failed", err);
       }
     }
-
-    setIsInterviewing(false);
-
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-    }
-
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
-
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.close();
-    }
   };
 
-  // Reset interview
-  const resetInterview = () => {
-    setCurrentQuestion(null);
-    setQuestionNumber(1);
+  const addLog = (speaker, text, feedback=null) => {
+    setChatLog(prev => [...prev, { speaker, text, feedback }]);
+  };
+
+  const handleAnswerSubmit = async () => {
+    if (!userAnswer.trim()) return;
+
+    const currentQ = question.question;
+    const currentA = userAnswer;
+    
+    addLog('user', currentA);
     setUserAnswer('');
-    setFeedback([]);
-    setQuestionsAndAnswers([]);
-    setShowSummary(false);
-    setInterviewSummary('');
+    setLoading(true);
+
+    try {
+      const res = await api.post('/interview/evaluate-dynamic', {
+        question: currentQ,
+        answer: currentA,
+        difficulty: difficulty,
+        history: history
+      });
+
+      const data = res.data;
+      
+      setHistory(prev => [...prev, { q: currentQ, a: currentA, f: data.feedback }]);
+      setDifficulty(data.next_difficulty || difficulty);
+      
+      // Update dynamic scores
+      setScores(s => ({
+         technical: data.technical_score ? Math.round((s.technical + data.technical_score)/(s.technical ? 2 : 1)) : s.technical,
+         communication: data.communication_score ? Math.round((s.communication + data.communication_score)/(s.communication ? 2 : 1)) : s.communication,
+         problem_solving: data.problem_solving_score ? Math.round((s.problem_solving + data.problem_solving_score)/(s.problem_solving ? 2 : 1)) : s.problem_solving,
+         confidence: data.confidence_score ? Math.round((s.confidence + data.confidence_score)/(s.confidence ? 2 : 1)) : s.confidence,
+         body_language: s.body_language || 80 // fallback if tracking failed
+      }));
+
+      // Append instant feedback to the AI history visually
+      if(data.feedback) {
+         addLog('system', `Feedback: ${data.feedback}`);
+      }
+      
+      // Update UI with follow up
+      if(data.follow_up_question) {
+        setQuestion({ question: data.follow_up_question });
+        addLog('ai', data.follow_up_question);
+      } else {
+         // Ended gracefully based on backend? (Fallback)
+      }
+      
+    } catch (err) {
+      addLog('system', 'Error processing answer. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if (loadingResumes) {
+  const handleCodeSubmit = (result) => {
+    const currentQ = question.question;
+    const currentA = `[Code Submission: ${result.is_correct ? 'Accepted' : 'Needs Work'}] Space: ${result.space_complexity}`;
+    
+    setHistory(prev => [...prev, { q: currentQ, a: currentA, f: result.feedback }]);
+    addLog('system', `Code evaluated. ${result.feedback}`);
+    
+    if (result.follow_up_question) {
+       setQuestion({ question: result.follow_up_question });
+       addLog('ai', result.follow_up_question);
+       setCodingMode(false); // Drop back to chat
+    }
+  };
+
+  const endInterview = async (abandoned = false) => {
+    setStatus('Completed');
+    stopAV();
+    if (pollingInterval.current) clearInterval(pollingInterval.current);
+    
+    if(abandoned) {
+       navigate('/dashboard');
+       return;
+    }
+
+    try {
+       const technical_score = scores.technical || 50;
+       const communication_score = scores.communication || 50;
+       const problem_solving_score = scores.problem_solving || 50;
+       const confidence_score = scores.confidence || 50;
+       const body_language_score = scores.body_language || 50;
+       
+       const final_score = Math.round(
+          (technical_score * 0.4) + 
+          (communication_score * 0.2) + 
+          (problem_solving_score * 0.2) + 
+          (confidence_score * 0.1) + 
+          (body_language_score * 0.1)
+       );
+
+       await api.post('/interview/history', {
+         resume_id: parseInt(resumeId),
+         questions: JSON.stringify(history.map(h => h.q)),
+         answers: JSON.stringify(history.map(h => h.a)),
+         per_question_feedback: JSON.stringify(history.map(h => h.f)),
+         technical_score,
+         communication_score,
+         body_language_score,
+         final_score,
+         final_feedback: "Dynamic Interview synthesis.",
+         body_language_feedback: "Body language analysis complete."
+       });
+    } catch(e){
+       console.error("Failed to save history", e);
+    }
+  };
+
+  if (status === 'Completed') {
     return (
-      <div className="pt-24 p-6 max-w-7xl mx-auto min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      <div className="min-h-screen pt-24 bg-slate-900 flex flex-col justify-center items-center px-4">
+        <CheckCircle2 className="w-20 h-20 text-green-500 mb-6" />
+        <h1 className="text-4xl font-bold text-white mb-4">Interview Completed</h1>
+        <p className="text-slate-400 mb-8 max-w-md text-center">
+          The AI has synthesized your session and calculated comprehensive dynamic scores, assessing technical knowledge, communication, confidence, and body language.
+        </p>
+        <button onClick={() => window.location.replace('/dashboard')} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-xl">
+          Return to Dashboard
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="pt-24 p-6 max-w-7xl mx-auto min-h-screen animate-in fade-in duration-500">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div className="min-h-screen bg-slate-900 pt-20 flex flex-col pb-6">
+      
+      {/* Hidden canvas for taking snapshot */}
+      <canvas ref={canvasRef} style={{display: 'none'}} />
+
+      <div className="flex-1 max-w-[1600px] mx-auto w-full px-4 lg:px-8 flex flex-col lg:flex-row gap-8 relative items-start">
         
-        {/* Left: Video Feed Area */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-slate-950 rounded-4xl overflow-hidden shadow-2xl relative aspect-video border border-slate-800 ring-1 ring-white/5">
-            <video 
-              ref={videoRef} 
-              autoPlay 
-              playsInline 
-              muted 
-              className={`w-full h-full object-cover scale-x-[-1] transition-opacity duration-500 ${!stream ? 'opacity-0' : 'opacity-100'}`} 
-            />
-            
-            {!stream && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-700 bg-slate-900/50">
-                <div className="w-20 h-20 bg-slate-800/50 rounded-full flex items-center justify-center mb-4 border border-white/5">
-                  <Camera className="w-10 h-10 opacity-20" />
+        {/* TWO-COLUMN LAYOUT */}
+        
+        {/* LEFT COLUMN: Sticky AV & Controls (Fixed 420px width) */}
+        <div className="lg:w-[420px] w-full shrink-0 lg:sticky lg:top-[90px] flex flex-col gap-5">
+          
+          {/* Status Header */}
+          <div className="bg-slate-800 rounded-2xl p-4 border border-slate-700 flex justify-between items-center shadow-lg">
+             <div>
+                <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wider">Status</p>
+                <div className="flex items-center gap-2">
+                   <span className={`w-3 h-3 rounded-full ${status === 'Running' ? 'bg-red-500 animate-pulse' : status === 'Paused' ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
+                   <span className="text-white font-bold">{status}</span>
                 </div>
-                <p className="text-sm">Start interview to begin</p>
+             </div>
+             <span className="px-3 py-1 bg-blue-600/20 border border-blue-500/30 rounded-xl text-blue-400 text-xs font-bold self-end">
+               {difficulty}
+             </span>
+          </div>
+
+          <div className="bg-slate-800 rounded-3xl overflow-hidden border border-slate-700 aspect-video relative shadow-2xl">
+            {stream ? (
+              <video autoPlay playsInline muted ref={videoRef} className="w-full h-full object-cover transform scale-x-[-1]" />
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-slate-500 bg-slate-800/50">
+                <CameraOff className="w-10 h-10 mb-2 opacity-40" />
+                <span className="text-xs">Camera Disabled</span>
               </div>
             )}
-          </div>
-
-          {/* Resume Selection */}
-          {!isInterviewing && (
-            <div className="bg-slate-900/50 rounded-lg border border-slate-800 p-4">
-              <label className="block text-sm font-semibold text-white mb-2">Select Resume:</label>
-              <select
-                value={selectedResume?.id || ''}
-                onChange={(e) => {
-                  const resume = resumes.find(r => r.id === parseInt(e.target.value));
-                  setSelectedResume(resume);
-                }}
-                className="w-full bg-slate-800 text-white rounded-lg px-4 py-2 border border-slate-700 focus:border-blue-600 focus:outline-none"
-              >
-                {resumes.map(resume => (
-                  <option key={resume.id} value={resume.id}>
-                    {resume.name || resume.filename}
-                  </option>
-                ))}
-              </select>
-              {resumes.length === 0 && (
-                <p className="text-slate-400 text-sm mt-2">No resumes found. Please upload a resume first.</p>
-              )}
-            </div>
-          )}
-
-          {/* Controls */}
-          <div className="flex gap-4 flex-wrap">
-            <button
-              onClick={startInterview}
-              disabled={isInterviewing || !selectedResume}
-              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition"
-            >
-              <Play className="w-5 h-5" />
-              Start Interview
-            </button>
-            <button
-              onClick={() => stopInterview(true)}
-              disabled={!isInterviewing}
-              className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition"
-            >
-              <Square className="w-5 h-5" />
-              Stop Interview
-            </button>
-            {!isInterviewing && questionsAndAnswers.length > 0 && (
-              <button
-                onClick={resetInterview}
-                className="bg-slate-700 hover:bg-slate-600 text-white px-6 py-3 rounded-lg transition"
-              >
-                Start Over
-              </button>
+            {!micOn && (
+               <div className="absolute top-4 left-4 p-2 bg-red-500/80 rounded-full text-white backdrop-blur-md">
+                 <MicOff className="w-4 h-4" />
+               </div>
             )}
           </div>
 
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
-              <p className="text-red-200 text-sm">{error}</p>
-            </div>
-          )}
+          {/* Restored Controls Panel */}
+          <div className="bg-slate-800 rounded-3xl p-5 border border-slate-700 shadow-xl space-y-4">
+             <div className="grid grid-cols-2 gap-3">
+               {status === 'Ready' && (
+                 <button onClick={handleStartInterview} className="col-span-2 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold flex justify-center items-center gap-2 transition">
+                   <Play className="w-4 h-4 fill-current"/> Start Interview
+                 </button>
+               )}
+               {status === 'Running' && (
+                 <button onClick={() => setStatus('Paused')} className="col-span-2 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold flex justify-center items-center gap-2 transition">
+                   <Pause className="w-4 h-4 fill-current"/> Pause Interview
+                 </button>
+               )}
+               {status === 'Paused' && (
+                 <button onClick={() => setStatus('Running')} className="col-span-2 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold flex justify-center items-center gap-2 transition">
+                   <Play className="w-4 h-4 fill-current"/> Resume Interview
+                 </button>
+               )}
+             </div>
+
+             <div className="grid grid-cols-2 gap-3">
+               <button onClick={toggleCamera} className="py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-sm font-semibold flex flex-col justify-center items-center gap-1 transition">
+                 {camOn ? <Camera className="w-4 h-4" /> : <CameraOff className="w-4 h-4 text-red-400" />} 
+                 Toggle Cam
+               </button>
+               <button onClick={toggleMic} className="py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-sm font-semibold flex flex-col justify-center items-center gap-1 transition">
+                 {micOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4 text-red-400" />} 
+                 Toggle Mic
+               </button>
+             </div>
+
+             <div className="pt-2 border-t border-slate-700">
+               <button onClick={() => endInterview(false)} disabled={status === 'Ready'} className="w-full py-3 bg-red-600/90 hover:bg-red-500 text-white rounded-xl font-bold flex justify-center items-center gap-2 disabled:opacity-40 transition">
+                 <Square className="w-4 h-4 fill-current"/> Stop Session
+               </button>
+             </div>
+          </div>
         </div>
 
-        {/* Right: Questions and Feedback Panel */}
-        <div className="bg-slate-900 rounded-4xl border border-slate-800 p-6 h-fit max-h-200 overflow-y-auto">
-          {showSummary ? (
-            // Summary View
-            <div>
-              <h3 className="text-xl font-semibold text-white mb-4">Interview Summary</h3>
-              <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50 max-h-150 overflow-y-auto">
-                <div className="text-white text-sm whitespace-pre-wrap">{interviewSummary}</div>
+        {/* RIGHT COLUMN: Chat / Questions / Code (Scrollable) */}
+        <div className="flex-1 w-full flex flex-col gap-6 h-[calc(100vh-140px)]">
+           {codingMode ? (
+              <div className="flex-1 rounded-3xl overflow-hidden border border-slate-700 shadow-xl">
+                 <CodingInterviewPanel 
+                   question={question?.question || "Awaiting Question..."} 
+                   language={codeLanguage} 
+                   setLanguage={setCodeLanguage}
+                   onCodeSubmit={handleCodeSubmit}
+                 />
               </div>
-            </div>
-          ) : currentQuestion ? (
-            // Question View
-            <div className="space-y-4">
-              <div className="bg-blue-600/10 border border-blue-600/20 rounded-lg p-4">
-                <p className="text-blue-400 text-xs font-semibold mb-2">Question {questionNumber}</p>
-                <p className="text-white font-semibold">{currentQuestion.question}</p>
-                <div className="flex gap-2 mt-3">
-                  <span className="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300">
-                    {currentQuestion.category}
-                  </span>
-                  <span className="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300">
-                    {currentQuestion.difficulty}
-                  </span>
-                </div>
-              </div>
-
-              {/* User Answer Input */}
-              <div>
-                <label className="text-white text-sm font-semibold mb-2 block">
-                  Your Answer:
-                </label>
-                <textarea
-                  value={userAnswer}
-                  onChange={(e) => setUserAnswer(e.target.value)}
-                  placeholder="Type or speak your answer here..."
-                  className="w-full bg-slate-800 text-white rounded-lg p-3 border border-slate-700 focus:border-blue-600 focus:outline-none text-sm h-24 resize-none"
-                />
-              </div>
-
-              {/* Submit Button */}
-              <button
-                onClick={submitAnswer}
-                disabled={loadingFeedback || !userAnswer.trim()}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2 rounded-lg flex items-center justify-center gap-2 transition"
-              >
-                {loadingFeedback ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <Send className="w-4 h-4" />
-                    Submit Answer
-                  </>
-                )}
-              </button>
-
-              {/* Feedback History */}
-              {feedback.length > 0 && (
-                <div className="mt-4 space-y-2">
-                  <p className="text-slate-400 text-xs font-semibold">Feedback:</p>
-                  <div className="space-y-2 max-h-75 overflow-y-auto">
-                    {feedback.map((item, idx) => (
-                      <div key={idx} className={`rounded-lg p-3 text-sm ${
-                        item.type === 'system' ? 'bg-blue-600/10 border border-blue-600/20 text-blue-300' :
-                        item.type === 'answer' ? 'bg-slate-800/50 border border-slate-700/50 text-white' :
-                        'bg-green-600/10 border border-green-600/20 text-green-300'
-                      }`}>
-                        <p className="text-xs text-slate-400 mb-1">{item.time}</p>
-                        <p>{item.text}</p>
-                      </div>
-                    ))}
+           ) : (
+                <div className="flex-1 bg-slate-800 rounded-3xl border border-slate-700 flex flex-col overflow-hidden shadow-xl">
+                  <div className="p-5 border-b border-slate-700 flex justify-between items-center bg-slate-800/80 sticky top-0 z-10 shadow-sm backdrop-blur">
+                     <h3 className="font-bold text-white flex items-center gap-2 text-lg">
+                       <Bot className="w-6 h-6 text-blue-400" /> Live Interview Log
+                     </h3>
+                     <button 
+                       onClick={() => setCodingMode(true)}
+                       className="px-3 py-1.5 rounded-lg border border-slate-600 text-slate-400 hover:text-white hover:border-slate-400 transition flex gap-2 items-center text-sm"
+                     >
+                       <Code2 className="w-4 h-4" /> Switch to Coding
+                     </button>
                   </div>
+                  
+                  {/* Chat scrolling container */}
+                  <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar scroll-smooth">
+                    {status === 'Ready' && (
+                       <div className="flex-1 flex flex-col items-center justify-center text-slate-500 h-full">
+                          <MessageSquare className="w-16 h-16 mb-4 opacity-20" />
+                          <p>Click 'Start Interview' to initialize the AI model</p>
+                       </div>
+                    )}
+                    
+                    <AnimatePresence>
+                      {chatLog.map((log, idx) => (
+                        <motion.div key={idx} initial={{opacity:0, y:10}} animate={{opacity:1, y:0}} className={`flex ${log.speaker === 'user' ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`max-w-[85%] rounded-[1.5rem] p-4 text-sm leading-relaxed shadow-md
+                             ${log.speaker === 'ai' ? 'bg-blue-900/40 border border-blue-500/40 text-blue-50' 
+                             : log.speaker === 'system' ? 'bg-slate-800 border border-slate-700 text-amber-200' 
+                             : 'bg-indigo-600 text-white rounded-br-sm'}`}>
+                            
+                            {/* Render System Badges conditionally */}
+                            {log.speaker === 'system' && log.text.includes('[Body Language') && <AlertCircle className="w-4 h-4 inline mr-2 text-amber-400" />}
+                            
+                            {log.text}
+                          </div>
+                        </motion.div>
+                      ))}
+                      
+                      {loading && (
+                         <motion.div initial={{opacity:0}} animate={{opacity:1}} className="flex justify-start">
+                           <div className="p-4 rounded-2xl bg-slate-800 border border-slate-700 text-slate-400 text-sm flex gap-3 items-center">
+                             <Loader2 className="w-5 h-5 animate-spin text-blue-400" /> Analysing semantics and preparing next topic... (May take up to 40s on high AI load)
+                           </div>
+                         </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                  
+                  {/* Input Sticky Footer */}
+                  {status === 'Running' && (
+                    <div className="p-4 bg-slate-800/80 border-t border-slate-700 backdrop-blur shrink-0">
+                      <div className="relative">
+                        <textarea 
+                          value={userAnswer}
+                          onChange={(e) => setUserAnswer(e.target.value)}
+                          placeholder="Type or dictate your answer..."
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-3 pr-14 text-sm text-white resize-none outline-none focus:border-blue-500 transition shadow-inner h-[80px]"
+                        />
+                        <button
+                          onClick={handleAnswerSubmit}
+                          disabled={loading || !userAnswer.trim()}
+                          className="absolute right-3 bottom-3 p-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-50 transition shadow-md"
+                        >
+                          <Send className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="flex justify-between items-center mt-2 px-1">
+                        <button 
+                          onClick={() => {
+                            const rec = recognitionRef.current;
+                            if(rec) { rec.start(); addLog('system', 'Microphone recording enabled...'); }
+                          }}
+                          className="text-xs text-slate-400 hover:text-white flex gap-1.5 items-center bg-slate-700/50 px-3 py-1.5 rounded-lg"
+                        >
+                          <Mic className="w-3.5 h-3.5 text-blue-400" /> Dictate Answer
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          ) : (
-            // Initial State
-            <div className="flex flex-col items-center justify-center h-48">
-              <MessageSquare className="w-12 h-12 text-slate-600 mb-4" />
-              <p className="text-slate-400 text-center">
-                Select a resume and click "Start Interview" to begin your AI-powered interview.
-              </p>
-            </div>
-          )}
+           )}
         </div>
+
       </div>
     </div>
   );

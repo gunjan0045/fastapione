@@ -7,7 +7,10 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import InterviewSelection from './pages/InterviewSelection';
+import HumanInterviewBooking from './pages/HumanInterviewBooking';
 import Interview from './pages/Interview';
+import InterviewFeedback from './pages/InterviewFeedback';
 import About from './pages/About';
 import Contact from './pages/Contact';
 import AnimatedBackground from './components/AnimatedBackground';
@@ -30,7 +33,10 @@ function App() {
                 
                 <Route element={<ProtectedRoute />}>
                   <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/interview" element={<InterviewSelection />} />
+                  <Route path="/interview/book-expert" element={<HumanInterviewBooking />} />
                   <Route path="/interview/setup" element={<Interview />} />
+                  <Route path="/feedback/:id" element={<InterviewFeedback />} />
                 </Route>
               </Routes>
             </main>
