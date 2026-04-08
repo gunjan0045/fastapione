@@ -13,6 +13,7 @@ import Interview from './pages/Interview';
 import InterviewFeedback from './pages/InterviewFeedback';
 import About from './pages/About';
 import Contact from './pages/Contact';
+import Features from './pages/Features';
 import AnimatedBackground from './components/AnimatedBackground';
 
 function App() {
@@ -26,6 +27,7 @@ function App() {
             <main className="flex-1 w-full relative z-10">
               <Routes>
                 <Route path="/" element={<Home />} />
+                <Route path="/features" element={<Features />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/contact" element={<Contact />} />
                 <Route path="/login" element={<Login />} />

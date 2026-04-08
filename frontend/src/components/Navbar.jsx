@@ -48,29 +48,40 @@ const Navbar = () => {
 
   const navLinks = [
     { name: 'Home', path: '/' },
-    { name: 'Features', path: '/#features' },
+    { name: 'Features', path: '/features' },
     { name: 'About', path: '/about' },
     { name: 'Contact', path: '/contact' },
   ];
 
   return (
-    <nav className="flex items-center justify-between px-6 md:px-12 py-4 bg-white/60 dark:bg-slate-950/60 backdrop-blur-xl border-b border-white/20 dark:border-white/10 fixed top-0 left-0 right-0 z-50 transition-all duration-300">
-      <Link to="/" className="flex items-center gap-2 text-xl font-bold text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-cyan-400 transition-all hover:scale-105 z-50">
-        <div className="p-2 bg-blue-600/10 dark:bg-cyan-500/10 rounded-lg">
-          <Rocket className="w-6 h-6 text-blue-600 dark:text-cyan-400 animate-pulse" />
+    <nav className="flex items-center justify-between px-6 md:px-16 py-4 bg-[rgba(255,255,255,0.75)] dark:bg-[rgba(7,12,28,0.75)] backdrop-blur-[18px] border-b border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.08)] fixed top-0 left-0 right-0 z-50 transition-all duration-500">
+      <Link to="/" className="flex items-center gap-2 text-xl font-bold text-slate-900 dark:text-white hover:text-[#009DFF] dark:hover:text-[#18C3FF] transition-all hover:scale-105 z-50">
+        <div className="p-2 bg-[#009DFF]/10 dark:bg-[#18C3FF]/10 rounded-lg">
+          <Rocket className="w-6 h-6 text-[#009DFF] dark:text-[#18C3FF] animate-pulse" />
         </div>
         <span className="tracking-tight hidden sm:block">AI Interview Coach</span>
       </Link>
       
       {/* Desktop Links */}
-      <div className="hidden md:flex items-center gap-8">
-        {navLinks.map((link) => (
-          <Link key={link.name} to={link.path} className="text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-cyan-400 font-semibold text-sm transition-colors">
-            {link.name}
-          </Link>
-        ))}
+      <div className="hidden md:flex items-center gap-4">
+        {navLinks.map((link) => {
+          const isActive = location.pathname === link.path;
+          return (
+            <Link 
+              key={link.name} 
+              to={link.path} 
+              className={`font-semibold text-sm transition-all duration-300 px-5 py-2 rounded-full ${
+                isActive 
+                  ? 'bg-gradient-to-r from-[#009DFF] to-blue-600 dark:from-[#18C3FF] dark:to-blue-600 text-white shadow-[0_0_15px_rgba(24,195,255,0.4)] hover:scale-105' 
+                  : 'text-slate-600 dark:text-slate-300 hover:text-[#009DFF] dark:hover:text-[#18C3FF] hover:bg-slate-50 dark:hover:bg-white/5'
+              }`}
+            >
+              {link.name}
+            </Link>
+          );
+        })}
         {user && (
-          <Link to="/dashboard" className="flex items-center gap-2 px-4 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-white hover:bg-blue-600 dark:hover:bg-cyan-600 font-semibold text-sm transition-all shadow-sm hover:shadow-lg">
+          <Link to="/dashboard" className={`flex items-center gap-2 px-5 py-2 rounded-full font-semibold text-sm transition-all duration-300 shadow-sm hover:shadow-lg ${location.pathname === '/dashboard' ? 'bg-gradient-to-r from-[#009DFF] to-blue-600 dark:from-[#18C3FF] dark:to-blue-600 text-white shadow-[0_0_15px_rgba(24,195,255,0.4)] hover:scale-105' : 'text-slate-600 dark:text-slate-300 hover:text-[#009DFF] dark:hover:text-[#18C3FF] hover:bg-slate-50 dark:hover:bg-white/5'}`}>
             <LayoutDashboard className="w-4 h-4" />
             Dashboard
           </Link>

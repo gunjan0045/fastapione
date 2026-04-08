@@ -205,6 +205,25 @@ def create_interview_history(
     return record
 
 
+@router.delete("/history/{history_id}")
+def delete_interview_history(
+    history_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    record = db.query(models.InterviewHistory).filter(
+        models.InterviewHistory.id == history_id,
+        models.InterviewHistory.user_id == current_user.id
+    ).first()
+
+    if not record:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+
+    db.delete(record)
+    db.commit()
+    return {"success": True}
+
+
 @router.post("/chat")
 def chat_with_bot(
     request: ChatMessageRequest,

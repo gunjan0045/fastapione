@@ -1,123 +1,78 @@
 import React, { useState } from 'react';
 import { motion as Motion } from 'framer-motion';
-import {
-  User,
-  Users,
-  Briefcase,
-  FileText,
-  Coffee,
-  MessageSquare,
-  Cpu,
-  Zap,
-  Activity
-} from 'lucide-react';
 
-// ✅ Removed Lightning (it does NOT exist)
-const icons = [
-  User,
-  Users,
-  Briefcase,
-  FileText,
-  Coffee,
-  MessageSquare,
-  Cpu,
-  Zap,
-  Activity
-];
-
-// ✅ Cleaner + optimized animation generator
-const createAnimatedElements = () =>
-  Array.from({ length: 12 }).map((_, i) => { // reduced from 18 → 12
-    const Icon = icons[Math.floor(Math.random() * icons.length)];
-
-    const startX = Math.random() * 100;
-    const startY = Math.random() * 100;
-
-    // smoother movement
-    const xOffset = (Math.random() - 0.5) * 20;
-    const yOffset = (Math.random() - 0.5) * 20;
-
+// Generate random abstract connected dots for the background network effect
+const createNetworkDots = () => 
+  Array.from({ length: 35 }).map((_, i) => {
     return {
       id: i,
-      Icon,
-      startX,
-      startY,
-      endX: startX + xOffset,
-      endY: startY + yOffset,
-      duration: 25 + Math.random() * 20,
-      delay: Math.random() * 4,
-      size: 16 + Math.random() * 20,
-      opacity: 0.05 + Math.random() * 0.1,
+      startX: Math.random() * 100,
+      startY: Math.random() * 100,
+      endX: Math.random() * 100,
+      endY: Math.random() * 100,
+      duration: 50 + Math.random() * 50,
+      delay: Math.random() * 10,
     };
   });
 
 const AnimatedBackground = () => {
-  const [elements] = useState(() => createAnimatedElements());
+  const [dots] = useState(() => createNetworkDots());
 
   return (
     <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+      {/* 
+        Main overarching gradients: 
+        Dark: #030712 -> #071226 -> #0B1B34 
+        Light: #F7FAFF -> #EEF4FF -> #E6F0FF
+      */}
+      <div className="absolute inset-0 bg-[linear-gradient(135deg,#F7FAFF_0%,#EEF4FF_50%,#E6F0FF_100%)] dark:bg-[linear-gradient(135deg,#030712_0%,#071226_50%,#0B1B34_100%)] transition-colors duration-700" />
 
-      {/* 🌈 Soft gradient background */}
-      <div className="absolute inset-0 bg-linear-to-br from-cyan-100/30 via-transparent to-indigo-100/30 dark:from-slate-900/40 dark:to-indigo-950/40 blur-[2px]" />
-
-      {/* 🔵 Center glowing orb */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <Motion.div
-          className="h-32 w-32 rounded-full bg-cyan-400/20 blur-2xl"
-          animate={{
-            scale: [1, 1.3, 1],
-            opacity: [0.4, 0.2, 0.4],
-          }}
-          transition={{
-            duration: 6,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-        />
-      </div>
-
-      {/* ✨ Floating icons */}
-      {elements.map((el) => (
-        <Motion.div
-          key={el.id}
-          className="absolute text-slate-200/70 dark:text-slate-500/70"
-          initial={{
-            x: `${el.startX}vw`,
-            y: `${el.startY}vh`,
-            opacity: 0,
-          }}
-          animate={{
-            x: [`${el.startX}vw`, `${el.endX}vw`, `${el.startX}vw`],
-            y: [`${el.startY}vh`, `${el.endY}vh`, `${el.startY}vh`],
-            opacity: [0, el.opacity, 0],
-            rotate: [0, 30, 0],
-          }}
-          transition={{
-            duration: el.duration,
-            delay: el.delay,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-        >
-          <el.Icon size={el.size} strokeWidth={1} />
-        </Motion.div>
-      ))}
-
-      {/* 🤖 AI core ring */}
+      {/* Floating blurry abstract lights */}
       <Motion.div
-        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 p-10 rounded-full border border-white/10 backdrop-blur-xl"
+        className="absolute top-[-20%] left-[-10%] w-[50vw] h-[50vw] bg-blue-400/20 dark:bg-blue-600/10 rounded-full blur-[120px] mix-blend-screen"
         animate={{
-          scale: [1, 1.2, 1],
-          opacity: [0.05, 0.15, 0.05],
+          x: [0, 50, 0],
+          y: [0, 50, 0],
         }}
-        transition={{
-          duration: 10,
-          repeat: Infinity,
-          ease: 'easeInOut',
+        transition={{ duration: 25, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      
+      <Motion.div
+        className="absolute bottom-[-10%] right-[-10%] w-[40vw] h-[40vw] bg-cyan-300/30 dark:bg-[#18C3FF]/10 rounded-full blur-[100px] mix-blend-screen"
+        animate={{
+          x: [0, -40, 0],
+          y: [0, -40, 0],
         }}
-      >
-        <Cpu className="text-cyan-300/60" size={60} />
-      </Motion.div>
+        transition={{ duration: 30, repeat: Infinity, ease: 'easeInOut' }}
+      />
+
+      {/* Subtle network dots */}
+      <div className="absolute inset-0 opacity-60 dark:opacity-40">
+        {dots.map((dot) => (
+          <Motion.div
+            key={dot.id}
+            className="absolute rounded-full bg-blue-500/50 w-1 h-1 shadow-[0_0_8px_rgba(59,130,246,0.8)]"
+            initial={{
+              x: `${dot.startX}vw`,
+              y: `${dot.startY}vh`,
+            }}
+            animate={{
+              x: [`${dot.startX}vw`, `${dot.endX}vw`, `${dot.startX}vw`],
+              y: [`${dot.startY}vh`, `${dot.endY}vh`, `${dot.startY}vh`],
+              opacity: [0.1, 0.5, 0.1]
+            }}
+            transition={{
+              duration: dot.duration,
+              delay: dot.delay,
+              repeat: Infinity,
+              ease: 'linear'
+            }}
+          />
+        ))}
+      </div>
+      
+      {/* Overlay noise texture for premium matte feel */}
+      <div className="absolute inset-0 opacity-[0.015] dark:opacity-[0.03] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMDEiLz4KPHBhdGggZD0iTTAgMEwyLTRNMCA0bDItNEwyIDBMMCAwIgogIHN0cm9rZT0iIzAwMCIgc3Ryb2tlLW9wYWNpdHk9IjAuMDUiLz4KPC9zdmc+')] pointer-events-none" />
 
     </div>
   );

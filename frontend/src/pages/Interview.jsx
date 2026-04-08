@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Camera, Mic, MicOff, CameraOff, Square, Play, Pause, MessageSquare, AlertCircle, Loader2, Send, Code2, CheckCircle2, Bot } from 'lucide-react';
+import { Camera, Mic, MicOff, CameraOff, Square, Play, Pause, MessageSquare, AlertCircle, Loader2, Send, Code2, CheckCircle2, Bot, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import CodingInterviewPanel from '../components/CodingInterviewPanel';
+import InterviewInstructionsModal from '../components/InterviewInstructionsModal';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const Interview = () => {
@@ -25,15 +26,19 @@ const Interview = () => {
   // UI State
   const [userAnswer, setUserAnswer] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingRetries, setLoadingRetries] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [codingMode, setCodingMode] = useState(type === 'Coding');
   const [codeLanguage, setCodeLanguage] = useState('python');
-  const [status, setStatus] = useState('Ready'); // Ready, Running, Paused, Completed
+  const [status, setStatus] = useState('Instructions'); // Instructions, Ready, Running, Paused, Completed
+  const [errorToast, setErrorToast] = useState(null);
 
   // AV State & Controls
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const recognitionRef = useRef(null);
   const pollingInterval = useRef(null);
+  const abortTimerRef = useRef(null);
   const [stream, setStream] = useState(null);
   const [camOn, setCamOn] = useState(true);
   const [micOn, setMicOn] = useState(true);
@@ -53,27 +58,30 @@ const Interview = () => {
       stopAV();
       if (recognitionRef.current) recognitionRef.current.stop();
       if (pollingInterval.current) clearInterval(pollingInterval.current);
+      if (abortTimerRef.current) clearTimeout(abortTimerRef.current);
     };
   }, []);
 
   // Protect back navigation mapping
   useEffect(() => {
     if (!resumeId) {
-      navigate('/dashboard');
+      navigate('/dashboard', { replace: true });
       return;
     }
 
     const unblock = () => {
        if (status === 'Running' || status === 'Paused') {
-         if(!window.confirm("Are you sure you want to leave this interview?")) {
+         if(!window.confirm("Leaving now will end your interview. Are you sure?")) {
             window.history.pushState(null, "", window.location.href);
          } else {
             endInterview(true);
          }
+       } else if (status === 'Instructions' || status === 'Ready') {
+            navigate('/dashboard', { replace: true });
        }
     };
 
-    window.history.pushState(null, "", window.location.href);
+    window.history.replaceState(null, "", window.location.href);
     window.addEventListener('popstate', unblock);
 
     const handleBeforeUnload = (e) => {
@@ -91,6 +99,30 @@ const Interview = () => {
     };
   }, [status, navigate, resumeId]);
 
+  // Tab switch auto-end
+  useEffect(() => {
+    const handleVisibility = () => {
+      if ((status === 'Running' || status === 'Paused') && (document.hidden || !document.hasFocus())) {
+        abortTimerRef.current = setTimeout(() => {
+          setErrorToast("Interview ended because you left the interview tab.");
+          endInterview(true);
+        }, 3000);
+      } else {
+        if (abortTimerRef.current) clearTimeout(abortTimerRef.current);
+      }
+    };
+
+    window.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('blur', handleVisibility);
+    window.addEventListener('focus', handleVisibility);
+
+    return () => {
+      window.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('blur', handleVisibility);
+      window.removeEventListener('focus', handleVisibility);
+    };
+  }, [status]);
+
   // Handle AV Init
   useEffect(() => {
     const initAV = async () => {
@@ -106,7 +138,7 @@ const Interview = () => {
       initAV();
       initSpeech();
     }
-  }, []); // Run ONLY once on mount
+  }, [status]); // Run when status changes to Ready
 
   // Auto-bind stream to video tag to prevent black screens on re-renders
   useEffect(() => {
@@ -118,6 +150,9 @@ const Interview = () => {
   const stopAV = () => {
     if (stream) {
       stream.getTracks().forEach(t => t.stop());
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     setStream(null);
   };
@@ -158,11 +193,19 @@ const Interview = () => {
   const handleStartInterview = async (retryCount = 0) => {
     setStatus('Running');
     setLoading(true);
+    setLoadingRetries(retryCount);
+    let timeoutFinished = false;
+
     try {
-      const res = await api.post('/interview/start-dynamic', {
+      const resPromise = api.post('/interview/start-dynamic', {
         resume_id: parseInt(resumeId),
         mode: type
       });
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => { timeoutFinished = true; reject(new Error('TIMEOUT')); }, 20000)
+      );
+
+      const res = await Promise.race([resPromise, timeoutPromise]);
       setQuestion(res.data);
       addLog('ai', res.data.question);
       
@@ -171,16 +214,22 @@ const Interview = () => {
         pollingInterval.current = setInterval(pollBodyLanguage, 10000);
       }
     } catch (e) {
-      if (retryCount < 1) {
-         addLog('system', 'Failed to initialize AI Engine. Retrying once in 3 seconds...');
-         setTimeout(() => handleStartInterview(retryCount + 1), 3000);
+      if (timeoutFinished || e.message === 'TIMEOUT') {
+         if (retryCount < 1) {
+            addLog('system', 'Unable to generate next question. Retrying...');
+            handleStartInterview(retryCount + 1);
+         } else {
+            setErrorToast("Interview ended because the AI service did not respond.");
+            endInterview(true);
+         }
       } else {
-         addLog('system', 'AI Engine failed repeatedly. Please check your backend properties or wait. Backend returned 500.');
+         addLog('system', 'System error initializing AI engine.');
          setStatus('Ready');
       }
     } finally {
-      if (retryCount >= 1 || status === 'Running') {
+      if (retryCount >= 1 || !timeoutFinished) {
          setLoading(false);
+         setLoadingRetries(0);
       }
     }
   };
@@ -220,27 +269,36 @@ const Interview = () => {
     setChatLog(prev => [...prev, { speaker, text, feedback }]);
   };
 
-  const handleAnswerSubmit = async () => {
-    if (!userAnswer.trim()) return;
+  const handleAnswerSubmit = async (retryCount = 0, passedAnswer = null) => {
+    const currentA = passedAnswer !== null ? passedAnswer : userAnswer;
+    if ((!currentA.trim() && !passedAnswer) || isSubmitting) return;
 
-    const currentQ = question.question;
-    const currentA = userAnswer;
+    if (retryCount === 0) {
+       addLog('user', currentA);
+       setUserAnswer('');
+    }
     
-    addLog('user', currentA);
-    setUserAnswer('');
+    setIsSubmitting(true);
     setLoading(true);
+    setLoadingRetries(retryCount);
+    let timeoutFinished = false;
 
     try {
-      const res = await api.post('/interview/evaluate-dynamic', {
-        question: currentQ,
+      const resPromise = api.post('/interview/evaluate-dynamic', {
+        question: question.question,
         answer: currentA,
         difficulty: difficulty,
         history: history
       });
 
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => { timeoutFinished = true; reject(new Error('TIMEOUT')); }, 20000)
+      );
+      
+      const res = await Promise.race([resPromise, timeoutPromise]);
       const data = res.data;
       
-      setHistory(prev => [...prev, { q: currentQ, a: currentA, f: data.feedback }]);
+      setHistory(prev => [...prev, { q: question.question, a: currentA, f: data.feedback }]);
       setDifficulty(data.next_difficulty || difficulty);
       
       // Update dynamic scores
@@ -266,9 +324,23 @@ const Interview = () => {
       }
       
     } catch (err) {
-      addLog('system', 'Error processing answer. Please try again.');
+      if (timeoutFinished || err.message === 'TIMEOUT') {
+         if (retryCount < 1) {
+            addLog('system', 'Unable to generate next question. Retrying...');
+            handleAnswerSubmit(retryCount + 1, currentA);
+         } else {
+            setErrorToast("Interview ended because the AI service did not respond.");
+            endInterview(true);
+         }
+      } else {
+         addLog('system', 'Error processing answer. Please try again.');
+      }
     } finally {
-      setLoading(false);
+      if (retryCount >= 1 || !timeoutFinished) {
+         setLoading(false);
+         setIsSubmitting(false);
+         setLoadingRetries(0);
+      }
     }
   };
 
@@ -290,9 +362,10 @@ const Interview = () => {
     setStatus('Completed');
     stopAV();
     if (pollingInterval.current) clearInterval(pollingInterval.current);
+    if (abortTimerRef.current) clearTimeout(abortTimerRef.current);
     
     if(abandoned) {
-       navigate('/dashboard');
+       navigate('/dashboard', { replace: true });
        return;
     }
 
@@ -345,6 +418,17 @@ const Interview = () => {
 
   return (
     <div className="min-h-screen bg-slate-900 pt-20 flex flex-col pb-6">
+      <InterviewInstructionsModal 
+         isOpen={status === 'Instructions'} 
+         onAccept={() => setStatus('Ready')} 
+      />
+      {errorToast && (
+         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-red-600 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3">
+            <AlertCircle className="w-5 h-5" />
+            <span className="font-bold">{errorToast}</span>
+            <button onClick={() => setErrorToast(null)} className="ml-4 hover:opacity-75"><X className="w-4 h-4" /></button>
+         </div>
+      )}
       
       {/* Hidden canvas for taking snapshot */}
       <canvas ref={canvasRef} style={{display: 'none'}} />
@@ -478,7 +562,7 @@ const Interview = () => {
                       {loading && (
                          <motion.div initial={{opacity:0}} animate={{opacity:1}} className="flex justify-start">
                            <div className="p-4 rounded-2xl bg-slate-800 border border-slate-700 text-slate-400 text-sm flex gap-3 items-center">
-                             <Loader2 className="w-5 h-5 animate-spin text-blue-400" /> Analysing semantics and preparing next topic... (May take up to 40s on high AI load)
+                             <Loader2 className="w-5 h-5 animate-spin text-blue-400" /> Generating your next interview question... {loadingRetries > 0 && `(Retry ${loadingRetries})`}
                            </div>
                          </motion.div>
                       )}
@@ -493,14 +577,15 @@ const Interview = () => {
                           value={userAnswer}
                           onChange={(e) => setUserAnswer(e.target.value)}
                           placeholder="Type or dictate your answer..."
-                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-3 pr-14 text-sm text-white resize-none outline-none focus:border-blue-500 transition shadow-inner h-[80px]"
+                          disabled={isSubmitting || loading}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-3 pr-14 text-sm text-white resize-none outline-none focus:border-blue-500 transition shadow-inner h-[80px] disabled:opacity-50"
                         />
                         <button
-                          onClick={handleAnswerSubmit}
-                          disabled={loading || !userAnswer.trim()}
-                          className="absolute right-3 bottom-3 p-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-50 transition shadow-md"
+                          onClick={() => handleAnswerSubmit(0, null)}
+                          disabled={isSubmitting || loading || !userAnswer.trim()}
+                          className="absolute right-3 bottom-3 p-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-50 transition shadow-md flex items-center justify-center"
                         >
-                          <Send className="w-4 h-4" />
+                          {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                         </button>
                       </div>
                       <div className="flex justify-between items-center mt-2 px-1">

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   UploadCloud, FileText, CheckCircle, FileUp, Activity, 
-  BarChart2, PlayCircle, Loader2, Calendar, TrendingUp, Settings2, Target
+  BarChart2, PlayCircle, Loader2, Calendar, TrendingUp, Settings2, Target, Trash2
 } from 'lucide-react';
 import { 
   XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -10,7 +10,6 @@ import {
 } from 'recharts';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import ParticlesBackground from '../components/ParticlesBackground';
 import StatCard from '../components/StatCard';
 import ResumeCard from '../components/ResumeCard';
 import ResumeDetailsModal from '../components/ResumeDetailsModal';
@@ -58,6 +57,14 @@ const Dashboard = () => {
     } catch (err) { alert("Failed to delete"); }
   };
 
+  const handleDeleteSession = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this session feedback?")) return;
+    try {
+      await api.delete(`/history/${id}`);
+      setInterviews(prev => prev.filter(i => i.id !== id));
+    } catch (err) { alert("Failed to delete session feedback"); }
+  };
+
   const handleUpload = async () => {
     if (!file) return;
     setUploading(true);
@@ -85,7 +92,6 @@ const Dashboard = () => {
 
   return (
     <>
-    <ParticlesBackground />
     <div className="pt-28 pb-20 px-6 max-w-7xl mx-auto relative z-10 space-y-8 animate-in fade-in duration-500">
       
       {/* 1. Header Banner / Stats */}
@@ -158,39 +164,51 @@ const Dashboard = () => {
             <h2 className="text-lg font-bold dark:text-white mb-4 flex items-center gap-2">
               <Calendar className="w-5 h-5 text-blue-500" /> Recent Sessions
             </h2>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
+            <div className="max-h-80 overflow-y-auto custom-scrollbar">
+              <table className="w-full text-left relative">
+                <thead className="sticky top-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm z-10">
                   <tr className="text-xs uppercase tracking-wider text-slate-400 border-b border-slate-100 dark:border-slate-800">
-                    <th className="pb-4 font-bold px-2">Date</th>
-                    <th className="pb-4 font-bold px-2">Resume ID</th>
-                    <th className="pb-4 font-bold px-2">Score</th>
-                    <th className="pb-4 font-bold px-2 text-right">Action</th>
+                    <th className="pb-3 pt-2 font-bold px-4">Date</th>
+                    <th className="pb-3 pt-2 font-bold px-4">Resume ID</th>
+                    <th className="pb-3 pt-2 font-bold px-4">Score</th>
+                    <th className="pb-3 pt-2 font-bold px-4 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-                  {interviews.slice(0, 5).map((interview) => (
-                    <tr key={interview.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                      <td className="py-4 px-2 text-sm text-slate-600 dark:text-slate-300 font-medium">
-                        {new Date(interview.completed_at || interview.created_at || Date.now()).toLocaleDateString()}
-                      </td>
-                      <td className="py-4 px-2 text-sm text-slate-500 dark:text-slate-400">
-                        {interview.resume_id ? `Resume #${interview.resume_id}` : 'General Interview'}
-                      </td>
-                      <td className="py-4 px-2">
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${(interview.final_score || interview.score) >= 70 ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'}`}>
-                          {interview.final_score || interview.score || 0}%
-                        </span>
-                      </td>
-                      <td className="py-4 px-2 text-right">
-                         <button onClick={() => navigate(`/feedback/${interview.id}`)} className="text-xs font-bold text-blue-500 hover:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 px-3 py-1.5 rounded-lg transition">
-                            View Feedback
-                         </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {interviews.map((interview) => {
+                    const finalScore = interview.final_score || interview.score || 0;
+                    const scoreColor = finalScore >= 80 
+                      ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
+                      : finalScore >= 60 
+                        ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' 
+                        : 'bg-red-500/10 text-red-500 border border-red-500/20';
+
+                    return (
+                      <tr key={interview.id} className="hover:bg-slate-50 hover:bg-blue-50/50 dark:hover:bg-slate-800/70 transition-colors group">
+                        <td className="py-4 px-4 text-sm text-slate-600 dark:text-slate-300 font-medium group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                          {new Date(interview.completed_at || interview.created_at || Date.now()).toLocaleDateString()}
+                        </td>
+                        <td className="py-4 px-4 text-sm text-slate-500 dark:text-slate-400">
+                          {interview.resume_id ? `Resume #${interview.resume_id}` : 'General Interview'}
+                        </td>
+                        <td className="py-4 px-4">
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold ${scoreColor}`}>
+                            {finalScore}%
+                          </span>
+                        </td>
+                        <td className="py-4 px-4 text-right space-x-2">
+                           <button onClick={() => navigate(`/feedback/${interview.id}`)} className="text-xs font-bold text-blue-500 hover:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 px-3 py-1.5 rounded-lg transition shadow-sm">
+                              View Feedback
+                           </button>
+                           <button onClick={() => handleDeleteSession(interview.id)} className="text-xs font-bold text-slate-400 hover:text-red-500 hover:bg-red-500/10 p-1.5 rounded-lg transition inline-flex items-center justify-center" title="Delete Session">
+                              <Trash2 className="w-4 h-4" />
+                           </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {interviews.length === 0 && (
-                    <tr><td colSpan="3" className="py-8 text-center text-slate-500 text-sm">Complete an interview to see history.</td></tr>
+                    <tr><td colSpan="4" className="py-12 text-center text-slate-500 font-medium">No interview sessions found. Start your first interview.</td></tr>
                   )}
                 </tbody>
               </table>
