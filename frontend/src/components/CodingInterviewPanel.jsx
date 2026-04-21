@@ -52,7 +52,7 @@ const CodingInterviewPanel = ({ question, language, setLanguage, onCodeSubmit })
       </div>
 
       {/* Editor Main */}
-      <div className="flex-1 min-h-[300px]">
+      <div className="flex-1 min-h-75">
         <Editor
           height="100%"
           language={language}

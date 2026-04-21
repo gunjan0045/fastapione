@@ -54,25 +54,26 @@ const Navbar = () => {
   ];
 
   return (
-    <nav className="flex items-center justify-between px-6 md:px-16 py-4 bg-[rgba(255,255,255,0.75)] dark:bg-[rgba(7,12,28,0.75)] backdrop-blur-[18px] border-b border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.08)] fixed top-0 left-0 right-0 z-50 transition-all duration-500">
-      <Link to="/" className="flex items-center gap-2 text-xl font-bold text-slate-900 dark:text-white hover:text-[#009DFF] dark:hover:text-[#18C3FF] transition-all hover:scale-105 z-50">
-        <div className="p-2 bg-[#009DFF]/10 dark:bg-[#18C3FF]/10 rounded-lg">
-          <Rocket className="w-6 h-6 text-[#009DFF] dark:text-[#18C3FF] animate-pulse" />
+    <nav className="fixed top-3 left-4 right-4 md:left-8 md:right-8 z-50">
+      <div className="flex items-center justify-between px-4 md:px-8 py-3.5 rounded-2xl md:rounded-3xl border border-white/25 dark:border-indigo-200/10 bg-white/65 dark:bg-[#070d28]/72 backdrop-blur-2xl panel-shadow">
+      <Link to="/" className="flex items-center gap-3 text-xl font-bold text-slate-900 dark:text-white hover:text-[#009DFF] dark:hover:text-[#18C3FF] transition-all hover:scale-105 z-50">
+        <div className="p-2.5 bg-[#009DFF]/10 dark:bg-[#18C3FF]/10 rounded-xl border border-blue-400/20">
+          <Rocket className="w-5 h-5 text-[#009DFF] dark:text-[#18C3FF] animate-pulse" />
         </div>
-        <span className="tracking-tight hidden sm:block">AI Interview Coach</span>
+        <span className="tracking-tight hidden sm:block text-base md:text-lg">AI Interview Coach</span>
       </Link>
       
       {/* Desktop Links */}
-      <div className="hidden md:flex items-center gap-4">
+      <div className="hidden md:flex items-center gap-2 lg:gap-3">
         {navLinks.map((link) => {
           const isActive = location.pathname === link.path;
           return (
             <Link 
               key={link.name} 
               to={link.path} 
-              className={`font-semibold text-sm transition-all duration-300 px-5 py-2 rounded-full ${
+              className={`font-semibold text-xs lg:text-sm transition-all duration-300 px-4 lg:px-5 py-2 rounded-full ${
                 isActive 
-                  ? 'bg-gradient-to-r from-[#009DFF] to-blue-600 dark:from-[#18C3FF] dark:to-blue-600 text-white shadow-[0_0_15px_rgba(24,195,255,0.4)] hover:scale-105' 
+                  ? 'bg-linear-to-r from-[#009DFF] to-blue-600 dark:from-[#18C3FF] dark:to-blue-600 text-white shadow-[0_0_20px_rgba(24,195,255,0.35)] hover:scale-105' 
                   : 'text-slate-600 dark:text-slate-300 hover:text-[#009DFF] dark:hover:text-[#18C3FF] hover:bg-slate-50 dark:hover:bg-white/5'
               }`}
             >
@@ -81,14 +82,14 @@ const Navbar = () => {
           );
         })}
         {user && (
-          <Link to="/dashboard" className={`flex items-center gap-2 px-5 py-2 rounded-full font-semibold text-sm transition-all duration-300 shadow-sm hover:shadow-lg ${location.pathname === '/dashboard' ? 'bg-gradient-to-r from-[#009DFF] to-blue-600 dark:from-[#18C3FF] dark:to-blue-600 text-white shadow-[0_0_15px_rgba(24,195,255,0.4)] hover:scale-105' : 'text-slate-600 dark:text-slate-300 hover:text-[#009DFF] dark:hover:text-[#18C3FF] hover:bg-slate-50 dark:hover:bg-white/5'}`}>
+          <Link to="/dashboard" className={`flex items-center gap-2 px-4 lg:px-5 py-2 rounded-full font-semibold text-xs lg:text-sm transition-all duration-300 shadow-sm hover:shadow-lg ${location.pathname === '/dashboard' ? 'bg-linear-to-r from-[#009DFF] to-blue-600 dark:from-[#18C3FF] dark:to-blue-600 text-white shadow-[0_0_20px_rgba(24,195,255,0.35)] hover:scale-105' : 'text-slate-600 dark:text-slate-300 hover:text-[#009DFF] dark:hover:text-[#18C3FF] hover:bg-slate-50 dark:hover:bg-white/5'}`}>
             <LayoutDashboard className="w-4 h-4" />
             Dashboard
           </Link>
         )}
       </div>
 
-      <div className="flex items-center gap-4 z-50">
+      <div className="flex items-center gap-3 z-50">
         <ThemeToggle />
         
         {!loading && (
@@ -98,7 +99,7 @@ const Navbar = () => {
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setDropdownOpen(!dropdownOpen)}
-                  className="w-10 h-10 rounded-full bg-linear-to-br from-blue-500 to-indigo-600 dark:from-cyan-500 dark:to-blue-600 text-white flex items-center justify-center font-bold cursor-pointer hover:shadow-[0_0_15px_rgba(34,211,238,0.5)] transition-all"
+                  className="w-10 h-10 rounded-full bg-linear-to-br from-blue-500 to-indigo-600 dark:from-cyan-500 dark:to-blue-600 text-white flex items-center justify-center font-bold cursor-pointer hover:shadow-[0_0_18px_rgba(34,211,238,0.5)] transition-all"
                   title={user?.first_name || user?.email}
                 >
                   {getUserInitial()}
@@ -112,7 +113,7 @@ const Navbar = () => {
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 10, scale: 0.95 }}
                       transition={{ duration: 0.2 }}
-                      className="absolute right-0 mt-3 w-56 rounded-2xl shadow-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 overflow-hidden z-50"
+                      className="absolute right-0 mt-3 w-56 rounded-2xl shadow-2xl bg-white/95 dark:bg-[#0b1233]/95 border border-slate-100 dark:border-indigo-300/10 overflow-hidden z-50 backdrop-blur-xl"
                     >
                       <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800">
                         <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
@@ -163,7 +164,7 @@ const Navbar = () => {
               </div>
             ) : (
               // Login button
-              <Link to="/login" className="px-6 py-2 text-sm font-bold text-white bg-blue-600 dark:bg-cyan-600 hover:bg-blue-700 dark:hover:bg-cyan-500 rounded-full shadow-lg shadow-blue-600/20 dark:shadow-cyan-600/20 transition-all active:scale-95 hidden sm:block">
+              <Link to="/login" className="px-5 py-2 text-sm font-bold text-white bg-blue-600 dark:bg-cyan-600 hover:bg-blue-700 dark:hover:bg-cyan-500 rounded-full shadow-lg shadow-blue-600/20 dark:shadow-cyan-600/20 transition-all active:scale-95 hidden sm:block">
                 Login
               </Link>
             )}
@@ -188,7 +189,7 @@ const Navbar = () => {
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.3 }}
             ref={mobileMenuRef}
-            className="absolute top-full left-0 right-0 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 overflow-hidden md:hidden shadow-2xl"
+            className="absolute top-full left-0 right-0 mt-2 rounded-2xl bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl border border-slate-200 dark:border-slate-800 overflow-hidden md:hidden shadow-2xl"
           >
             <div className="flex flex-col px-6 py-6 pb-8 space-y-4">
               {navLinks.map((link) => (
@@ -205,6 +206,7 @@ const Navbar = () => {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
     </nav>
   );
 };

@@ -16,7 +16,7 @@ const InterviewSelection = () => {
             animate={{ opacity: 1, y: 0 }}
             className="text-4xl md:text-5xl font-extrabold text-slate-900 dark:text-white"
           >
-            How would you like to <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">Interview?</span>
+            How would you like to <span className="text-transparent bg-clip-text bg-linear-to-r from-blue-600 to-cyan-500">Interview?</span>
           </motion.h1>
           <motion.p 
             initial={{ opacity: 0 }}
@@ -34,7 +34,7 @@ const InterviewSelection = () => {
             initial={{ opacity: 0, x: -30 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.2 }}
-            className="bg-white dark:bg-slate-800 rounded-3xl p-8 border-2 border-transparent hover:border-blue-500 dark:hover:border-cyan-500 shadow-xl transition-all group relative overflow-hidden flex flex-col"
+            className="bg-white/80 dark:bg-slate-900/75 backdrop-blur-xl rounded-3xl p-8 border border-slate-200 dark:border-indigo-200/10 hover:border-blue-500 dark:hover:border-cyan-500 shadow-xl transition-all group relative overflow-hidden flex flex-col"
           >
             <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 dark:bg-cyan-500/10 rounded-full blur-3xl -mr-20 -mt-20 transition-transform group-hover:scale-150" />
             
@@ -74,7 +74,7 @@ const InterviewSelection = () => {
             initial={{ opacity: 0, x: 30 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.3 }}
-            className="bg-white dark:bg-slate-800 rounded-3xl p-8 border-2 border-slate-100 dark:border-slate-700 hover:border-indigo-500 shadow-xl transition-all group relative overflow-hidden flex flex-col"
+            className="bg-white/80 dark:bg-slate-900/75 backdrop-blur-xl rounded-3xl p-8 border border-slate-100 dark:border-indigo-200/10 hover:border-indigo-500 shadow-xl transition-all group relative overflow-hidden flex flex-col"
           >
             <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl -mr-20 -mt-20 transition-transform group-hover:scale-150" />
             

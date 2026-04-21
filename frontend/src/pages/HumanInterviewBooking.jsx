@@ -42,7 +42,7 @@ const HumanInterviewBooking = () => {
         <motion.div 
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-xl text-center max-w-md w-full"
+          className="bg-white/80 dark:bg-slate-900/75 backdrop-blur-xl p-8 rounded-3xl shadow-xl text-center max-w-md w-full border border-slate-200 dark:border-indigo-200/10"
         >
           <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 className="w-10 h-10" />
@@ -65,7 +65,7 @@ const HumanInterviewBooking = () => {
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl overflow-hidden border border-slate-200 dark:border-slate-700"
+          className="bg-white/85 dark:bg-slate-900/75 backdrop-blur-xl rounded-3xl shadow-xl overflow-hidden border border-slate-200 dark:border-indigo-200/10"
         >
           <div className="bg-indigo-600 px-8 py-10 relative overflow-hidden text-white">
             <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
@@ -159,7 +159,7 @@ const HumanInterviewBooking = () => {
                 value={formData.notes}
                 onChange={handleChange}
                 placeholder="E.g., I struggle with System Design questions, please grill me on that."
-                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-all outline-none min-h-[100px] resize-none"
+                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-all outline-none min-h-25 resize-none"
               />
             </div>
 

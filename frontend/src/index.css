@@ -1,19 +1,59 @@
 @import "tailwindcss";
 @config "../tailwind.config.js";
 
+:root {
+  --bg-900: #040511;
+  --bg-850: #0a1030;
+  --bg-800: #0f1740;
+  --bg-100: #eef3ff;
+  --panel: rgba(10, 17, 46, 0.76);
+  --panel-light: rgba(255, 255, 255, 0.72);
+  --stroke: rgba(132, 156, 255, 0.25);
+  --text-strong: #f5f7ff;
+  --text-soft: #a7b6ee;
+  --neon-primary: #5b8dff;
+  --neon-cyan: #3ed7ff;
+  --neon-pink: #ff64d8;
+  --shadow-neon: 0 24px 50px -30px rgba(62, 215, 255, 0.55);
+}
+
 @layer base {
-  body {
-    /* Bhai, yahan sirf 'bg-transparent' add kiya hai taaki particles dikhein */
-    @apply antialiased text-slate-900 bg-transparent dark:text-slate-50 selection:bg-blue-500/30;
-  }
-  
-  /* Ye ek extra layer hai taaki agar canvas load na ho toh default color dikhe */
   html {
     @apply bg-slate-50 dark:bg-slate-950;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply antialiased text-slate-900 bg-transparent dark:text-slate-50 selection:bg-blue-500/30;
+    font-family: "Space Grotesk", "Segoe UI", sans-serif;
+    min-height: 100vh;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: "Sora", "Segoe UI", sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  button:not(:disabled),
+  a,
+  summary,
+  label[for],
+  [role="button"],
+  [data-clickable="true"] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
   }
 }
 
-/* Tera original scrollbar styling (No Changes) */
 ::-webkit-scrollbar {
   width: 8px;
 }
@@ -26,7 +66,118 @@
   @apply bg-slate-300 dark:bg-slate-700 rounded-full hover:bg-slate-400 dark:hover:bg-slate-600 transition-colors;
 }
 
-/* --- NEW: Glassmorphism utility for Dashboard cards --- */
 .glass-effect {
   @apply backdrop-blur-xl bg-white/70 dark:bg-slate-900/70 border border-white/20 dark:border-slate-800;
+}
+
+.glass-panel {
+  background: linear-gradient(145deg, rgba(20, 30, 78, 0.72), rgba(10, 15, 45, 0.82));
+  border: 1px solid rgba(120, 145, 255, 0.22);
+  box-shadow: 0 22px 60px -36px rgba(17, 28, 82, 0.95), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(18px);
+}
+
+.glass-panel-light {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(243, 247, 255, 0.62));
+  border: 1px solid rgba(189, 204, 255, 0.45);
+  box-shadow: 0 30px 55px -40px rgba(42, 69, 168, 0.55);
+  backdrop-filter: blur(16px);
+}
+
+.neon-ring {
+  position: relative;
+}
+
+.neon-ring::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(120deg, rgba(91, 141, 255, 0.55), rgba(62, 215, 255, 0.35), rgba(255, 100, 216, 0.3));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1px;
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.soft-gradient-text {
+  background: linear-gradient(92deg, #dce6ff 10%, #7fb8ff 48%, #7ceeff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.ambient-float {
+  animation: ambient-float 11s ease-in-out infinite;
+}
+
+.ambient-float-delay {
+  animation: ambient-float 14s ease-in-out infinite;
+  animation-delay: -3.5s;
+}
+
+.neon-pulse {
+  animation: neon-pulse 2.8s ease-in-out infinite;
+}
+
+.grid-lines {
+  background-image: linear-gradient(to right, rgba(126, 150, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(126, 150, 255, 0.08) 1px, transparent 1px);
+  background-size: 42px 42px;
+}
+
+.noise-overlay {
+  position: relative;
+}
+
+.noise-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.06) 0.7px, transparent 0.7px);
+  background-size: 2px 2px;
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+@keyframes ambient-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0);
+  }
+}
+
+@keyframes neon-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 rgba(62, 215, 255, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 26px rgba(62, 215, 255, 0.42);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient-float,
+  .ambient-float-delay,
+  .neon-pulse {
+    animation: none;
+  }
+}
+
+.clickable-surface {
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background-color 180ms ease;
+}
+
+.clickable-surface:hover {
+  transform: translateY(-2px);
+}
+
+.clickable-surface:active {
+  transform: translateY(0);
 }

@@ -22,6 +22,8 @@ const Dashboard = () => {
   const [resumes, setResumes] = useState([]);
   const [interviews, setInterviews] = useState([]);
   const [selectedResume, setSelectedResume] = useState(null);
+  const chartContainerRef = useRef(null);
+  const [isChartReady, setIsChartReady] = useState(false);
   
   // New States for UI flow
   const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
@@ -32,6 +34,27 @@ const Dashboard = () => {
   useEffect(() => {
     fetchResumes();
     fetchInterviews();
+  }, []);
+
+  useEffect(() => {
+    const el = chartContainerRef.current;
+    if (!el) return;
+
+    const updateChartReady = () => {
+      const rect = el.getBoundingClientRect();
+      setIsChartReady(rect.width > 0 && rect.height > 0);
+    };
+
+    updateChartReady();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateChartReady);
+      observer.observe(el);
+      return () => observer.disconnect();
+    }
+
+    window.addEventListener('resize', updateChartReady);
+    return () => window.removeEventListener('resize', updateChartReady);
   }, []);
 
   const fetchResumes = async () => {
@@ -93,11 +116,12 @@ const Dashboard = () => {
   return (
     <>
     <div className="pt-28 pb-20 px-6 max-w-7xl mx-auto relative z-10 space-y-8 animate-in fade-in duration-500">
+      <div className="absolute inset-x-8 top-16 h-36 bg-[radial-gradient(circle,rgba(62,215,255,0.18),transparent_62%)] pointer-events-none" />
       
       {/* 1. Header Banner / Stats */}
       <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         {/* Welcome Card */}
-        <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border border-white/30 dark:border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col justify-center lg:col-span-1">
+        <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border border-white/30 dark:border-indigo-200/10 rounded-3xl p-6 shadow-xl flex flex-col justify-center lg:col-span-1">
           <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Welcome back,</p>
           <p className="text-2xl font-bold dark:text-white truncate">{user?.first_name || user?.email || 'User'}</p>
         </div>
@@ -129,12 +153,12 @@ const Dashboard = () => {
         <div className="lg:col-span-2 space-y-8">
           
           {/* Performance Chart */}
-          <div className="bg-white dark:bg-slate-900/80 p-6 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 backdrop-blur-xl">
+          <div className="bg-white/85 dark:bg-slate-900/80 p-6 rounded-3xl shadow-xl border border-slate-100 dark:border-indigo-200/10 backdrop-blur-xl">
             <h2 className="text-lg font-bold dark:text-white mb-6 flex items-center gap-2">
               <Activity className="w-5 h-5 text-emerald-500" /> Performance Growth
             </h2>
-            <div className="h-60 w-full">
-              {interviews.length > 0 ? (
+            <div ref={chartContainerRef} className="h-60 w-full min-h-60">
+              {interviews.length > 0 && isChartReady ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={interviews} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <defs>
@@ -150,6 +174,10 @@ const Dashboard = () => {
                     <Area type="monotone" dataKey={i => i.final_score || i.score || 0} stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorScore)" />
                   </AreaChart>
                 </ResponsiveContainer>
+              ) : interviews.length > 0 ? (
+                <div className="flex h-full items-center justify-center text-slate-500 text-sm">
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" /> Preparing chart...
+                </div>
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-slate-500 text-sm">
                   <Activity className="w-12 h-12 mb-2 opacity-20" />
@@ -160,7 +188,7 @@ const Dashboard = () => {
           </div>
 
           {/* Recent Sessions Table */}
-          <div className="bg-white dark:bg-slate-900/80 p-6 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 backdrop-blur-xl">
+          <div className="bg-white/85 dark:bg-slate-900/80 p-6 rounded-3xl shadow-xl border border-slate-100 dark:border-indigo-200/10 backdrop-blur-xl">
             <h2 className="text-lg font-bold dark:text-white mb-4 flex items-center gap-2">
               <Calendar className="w-5 h-5 text-blue-500" /> Recent Sessions
             </h2>
@@ -184,7 +212,7 @@ const Dashboard = () => {
                         : 'bg-red-500/10 text-red-500 border border-red-500/20';
 
                     return (
-                      <tr key={interview.id} className="hover:bg-slate-50 hover:bg-blue-50/50 dark:hover:bg-slate-800/70 transition-colors group">
+                      <tr key={interview.id} className="hover:bg-blue-50/50 dark:hover:bg-slate-800/70 transition-colors group">
                         <td className="py-4 px-4 text-sm text-slate-600 dark:text-slate-300 font-medium group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                           {new Date(interview.completed_at || interview.created_at || Date.now()).toLocaleDateString()}
                         </td>
@@ -220,7 +248,7 @@ const Dashboard = () => {
         <div className="lg:col-span-1 space-y-6 flex flex-col h-full">
           
           {/* Start Interview Setup Card */}
-          <div className="bg-linear-to-br from-blue-600 to-indigo-700 p-6 rounded-3xl shadow-[0_20px_40px_-15px_rgba(37,99,235,0.5)] text-white relative overflow-hidden group">
+          <div className="bg-linear-to-br from-blue-600 to-indigo-700 p-6 rounded-3xl shadow-[0_20px_40px_-15px_rgba(37,99,235,0.5)] text-white relative overflow-hidden group neon-ring">
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-bl-full blur-2xl group-hover:scale-110 transition-transform"></div>
             <h3 className="text-xl font-bold mb-4 flex items-center gap-2 relative z-10">
               <PlayCircle className="w-6 h-6 text-cyan-300" /> Start Interview
@@ -256,10 +284,10 @@ const Dashboard = () => {
               </div>
             </div>
 
-            <button 
+              <button 
               disabled={!selectedResume}
               onClick={handleStartInterview}
-              className="w-full bg-white text-blue-700 py-3.5 rounded-2xl font-bold text-sm hover:shadow-[0_0_20px_rgba(255,255,255,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 relative z-10"
+              className="clickable-surface w-full bg-white text-blue-700 py-3.5 rounded-2xl font-bold text-sm hover:shadow-[0_0_20px_rgba(255,255,255,0.4)] disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 relative z-10"
             >
               {selectedResume ? "BEGIN SESSION NOW" : "SELECT A RESUME FIRST"}
             </button>
@@ -267,25 +295,25 @@ const Dashboard = () => {
           </div>
 
           {/* Upload Resume Card */}
-          <div className="bg-white dark:bg-slate-900/80 p-5 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 backdrop-blur-xl shrink-0">
+          <div className="bg-white/85 dark:bg-slate-900/80 p-5 rounded-3xl shadow-xl border border-slate-100 dark:border-indigo-200/10 backdrop-blur-xl shrink-0">
             <h3 className="text-sm font-bold dark:text-white mb-3 flex items-center gap-2">
               <UploadCloud className="w-4 h-4 text-blue-500" /> Upload New Resume
             </h3>
             <input type="file" hidden ref={fileInputRef} onChange={(e) => setFile(e.target.files?.[0] || null)} accept=".pdf" />
             
             <div className="flex gap-2">
-              <button 
+                <button 
                 onClick={() => fileInputRef.current?.click()} 
-                className="flex-1 border border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-3 text-center hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition group"
+                  className="clickable-surface flex-1 border border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-3 text-center hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition group"
               >
                 <FileUp className="h-5 w-5 mx-auto mb-1 text-slate-400 group-hover:text-blue-500" />
                 <p className="text-[10px] font-medium text-slate-500 truncate px-2">{file?.name || 'Browse PDF'}</p>
               </button>
               
-              <button 
+                <button 
                 onClick={handleUpload} 
                 disabled={!file || uploading} 
-                className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition-transform transform hover:scale-[1.02] flex items-center justify-center gap-2"
+                  className="clickable-surface w-full bg-blue-600 hover:bg-blue-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition-transform transform hover:scale-[1.02] flex items-center justify-center gap-2"
               >
                 {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Upload'}
               </button>
@@ -293,7 +321,7 @@ const Dashboard = () => {
           </div>
 
           {/* Resume List Card */}
-          <div className="bg-white dark:bg-slate-900/80 p-5 pl-2 pr-2 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 backdrop-blur-xl flex-1 min-h-[300px] flex flex-col">
+          <div className="bg-white/85 dark:bg-slate-900/80 p-5 pl-2 pr-2 rounded-3xl shadow-xl border border-slate-100 dark:border-indigo-200/10 backdrop-blur-xl flex-1 min-h-75 flex flex-col">
             <h3 className="text-sm font-bold dark:text-white mb-3 ml-3 flex items-center gap-2 shrink-0">
               <FileText className="w-4 h-4 text-amber-500" /> Your Resumes
             </h3>

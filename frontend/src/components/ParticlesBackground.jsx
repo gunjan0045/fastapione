@@ -8,10 +8,11 @@ const ParticlesBackground = () => {
     const ctx = canvas.getContext('2d');
     let animationFrameId;
     let particles = [];
+    let dotPattern = null;
     
     // Configuration
-    const particleCount = 60; // Adjust for density
-    const maxDistance = 150; // Distance to draw lines
+    const particleCount = 90;
+    const maxDistance = 80;
     
     const resizeCanvas = () => {
       canvas.width = window.innerWidth;
@@ -21,16 +22,25 @@ const ParticlesBackground = () => {
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    // Helper to check current theme
-    const isDarkMode = () => document.documentElement.classList.contains('dark');
-    
+    const createDotPattern = () => {
+      const patternCanvas = document.createElement('canvas');
+      patternCanvas.width = 4;
+      patternCanvas.height = 4;
+      const patternCtx = patternCanvas.getContext('2d');
+      patternCtx.fillStyle = 'rgba(255, 255, 255, 0.06)';
+      patternCtx.fillRect(0, 0, 1, 1);
+      dotPattern = ctx.createPattern(patternCanvas, 'repeat');
+    };
+
+    createDotPattern();
+
     class Particle {
       constructor() {
         this.x = Math.random() * canvas.width;
         this.y = Math.random() * canvas.height;
-        this.vx = (Math.random() - 0.5) * 1.2;
-        this.vy = (Math.random() - 0.5) * 1.2;
-        this.size = Math.random() * 2 + 1;
+        this.vx = (Math.random() - 0.5) * 0.32;
+        this.vy = (Math.random() - 0.5) * 0.32;
+        this.size = Math.random() * 1.45 + 0.5;
       }
       
       update() {
@@ -43,11 +53,9 @@ const ParticlesBackground = () => {
       }
       
       draw() {
-        const dark = isDarkMode();
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        // Slightly glowing dots
-        ctx.fillStyle = dark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(15, 23, 42, 0.3)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.33)';
         ctx.fill();
       }
     }
@@ -58,7 +66,14 @@ const ParticlesBackground = () => {
     
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const dark = isDarkMode();
+      
+      // Dark matte base to match hero reference tone.
+      const baseGradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      baseGradient.addColorStop(0, '#1b1b1d');
+      baseGradient.addColorStop(0.5, '#141416');
+      baseGradient.addColorStop(1, '#0f1012');
+      ctx.fillStyle = baseGradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       
       for (let i = 0; i < particles.length; i++) {
         particles[i].update();
@@ -72,9 +87,7 @@ const ParticlesBackground = () => {
           if (distance < maxDistance) {
             ctx.beginPath();
             const opacity = 1 - (distance / maxDistance);
-            ctx.strokeStyle = dark 
-              ? `rgba(255, 255, 255, ${opacity * 0.2})` 
-              : `rgba(15, 23, 42, ${opacity * 0.15})`;
+            ctx.strokeStyle = `rgba(255, 255, 255, ${opacity * 0.08})`;
             ctx.lineWidth = 1;
             ctx.moveTo(particles[i].x, particles[i].y);
             ctx.lineTo(particles[j].x, particles[j].y);
@@ -82,6 +95,12 @@ const ParticlesBackground = () => {
           }
         }
       }
+
+      if (dotPattern) {
+        ctx.fillStyle = dotPattern;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
       animationFrameId = requestAnimationFrame(animate);
     };
     

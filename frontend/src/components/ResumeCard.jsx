@@ -5,14 +5,14 @@ const ResumeCard = ({ resume, isSelected, onSelect, onDelete }) => {
   return (
     <div 
       onClick={() => onSelect(resume)} 
-      className={`group relative p-4 rounded-2xl cursor-pointer border-2 transition-all duration-300 flex items-center justify-between ${
+      className={`clickable-surface group relative p-4 rounded-2xl cursor-pointer border-2 transition-all duration-300 flex items-center justify-between ${
         isSelected 
         ? 'bg-blue-600/10 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.15)] dark:bg-cyan-500/10 dark:border-cyan-400 dark:shadow-[0_0_15px_rgba(34,211,238,0.15)]' 
         : 'bg-white dark:bg-slate-800/80 border-slate-100 dark:border-slate-700/50 hover:border-slate-300 dark:hover:border-slate-600 hover:shadow-md'
       }`}
     >
       <div className="flex items-center gap-4 overflow-hidden">
-        <div className={`p-3 rounded-xl flex-shrink-0 ${isSelected ? 'bg-blue-600 dark:bg-cyan-500 text-white shadow-md' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 group-hover:bg-blue-50 dark:group-hover:bg-slate-600'}`}>
+        <div className={`p-3 rounded-xl shrink-0 ${isSelected ? 'bg-blue-600 dark:bg-cyan-500 text-white shadow-md' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 group-hover:bg-blue-50 dark:group-hover:bg-slate-600'}`}>
           <FileText className="w-5 h-5" />
         </div>
         <div className="flex flex-col overflow-hidden">

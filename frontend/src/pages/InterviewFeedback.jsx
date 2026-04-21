@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
-import { Activity, Star, Eye, Code, ThumbsUp, ArrowLeft, Loader2, Award, Zap, BrainCircuit, Mic, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Activity, Star, Eye, Code, ThumbsUp, ArrowLeft, Loader2, Award, Zap, BrainCircuit, Mic, CheckCircle2, AlertCircle, Download } from 'lucide-react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import ParticlesBackground from '../components/ParticlesBackground';
 
@@ -13,6 +13,7 @@ const InterviewFeedback = () => {
   
   const [sessionData, setSessionData] = useState(null);
   const [loading, setLoading] = useState(true);
+   const [downloadLoading, setDownloadLoading] = useState(false);
 
   useEffect(() => {
     fetchSession();
@@ -68,19 +69,51 @@ const InterviewFeedback = () => {
      return 'text-red-400';
   };
 
+   const handleDownloadPdf = async () => {
+      try {
+         setDownloadLoading(true);
+         const response = await api.get(`/interview/history/${id}/pdf`, { responseType: 'blob' });
+         const blob = new Blob([response.data], { type: 'application/pdf' });
+         const url = window.URL.createObjectURL(blob);
+         const link = document.createElement('a');
+         link.href = url;
+         link.download = `interview-feedback-${id}.pdf`;
+         document.body.appendChild(link);
+         link.click();
+         link.remove();
+         window.URL.revokeObjectURL(url);
+      } catch (error) {
+         console.error('Failed to download PDF', error);
+         alert('PDF download failed. Please try again.');
+      } finally {
+         setDownloadLoading(false);
+      }
+   };
+
   return (
     <>
       <ParticlesBackground />
       <div className="pt-28 pb-20 px-6 max-w-7xl mx-auto relative z-10 space-y-8 animate-in fade-in duration-500">
         
-        <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2 text-slate-400 hover:text-white transition">
-           <ArrowLeft className="w-4 h-4" /> Back to Dashboard
-        </button>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+               <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2 text-slate-400 hover:text-white transition">
+                   <ArrowLeft className="w-4 h-4" /> Back to Dashboard
+               </button>
 
-        <div className="bg-white/10 dark:bg-slate-900/80 backdrop-blur-xl border border-white/20 dark:border-slate-800 rounded-3xl p-8 shadow-2xl flex flex-col lg:flex-row gap-8 items-center lg:items-stretch">
+               <button
+                  onClick={handleDownloadPdf}
+                  disabled={downloadLoading}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-blue-600 hover:bg-blue-500 disabled:opacity-70 disabled:cursor-not-allowed text-white font-semibold shadow-[0_0_20px_rgba(59,130,246,0.25)] transition"
+               >
+                  {downloadLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                  Download PDF
+               </button>
+            </div>
+
+      <div className="bg-white/10 dark:bg-slate-900/80 backdrop-blur-xl border border-white/20 dark:border-indigo-200/10 rounded-3xl p-8 shadow-2xl flex flex-col lg:flex-row gap-8 items-center lg:items-stretch neon-ring">
            
            {/* Final Score Circle */}
-           <div className="flex flex-col items-center justify-center p-8 bg-slate-800/50 rounded-full border-[12px] border-slate-700 shadow-inner relative w-[250px] h-[250px] shrink-0">
+           <div className="flex flex-col items-center justify-center p-8 bg-slate-800/50 rounded-full border-12 border-slate-700 shadow-inner relative w-62.5 h-62.5 shrink-0 neon-pulse">
               <span className="text-sm font-bold text-slate-400 uppercase tracking-widest absolute top-10">Overall</span>
               <span className={`text-6xl font-extrabold ${getScoreColor(finalScore)} drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]`}>
                 {finalScore}%
@@ -119,9 +152,9 @@ const InterviewFeedback = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
            {/* Radar Chart */}
-           <div className="bg-white/10 dark:bg-slate-900/80 p-6 rounded-3xl border border-slate-800 shadow-xl backdrop-blur-xl">
+           <div className="bg-white/10 dark:bg-slate-900/80 p-6 rounded-3xl border border-indigo-200/10 shadow-xl backdrop-blur-xl">
              <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2"><Zap className="w-5 h-5 text-yellow-500" /> Skill Distribution Radar</h2>
-             <div className="h-[350px] w-full">
+             <div className="h-87.5 w-full">
                <ResponsiveContainer width="100%" height="100%">
                  <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
                    <PolarGrid stroke="#334155" />
@@ -135,7 +168,7 @@ const InterviewFeedback = () => {
            </div>
 
            {/* Strengths & Weaknesses Placeholder */}
-           <div className="bg-white/10 dark:bg-slate-900/80 p-6 rounded-3xl border border-slate-800 shadow-xl backdrop-blur-xl flex flex-col gap-6">
+           <div className="bg-white/10 dark:bg-slate-900/80 p-6 rounded-3xl border border-indigo-200/10 shadow-xl backdrop-blur-xl flex flex-col gap-6">
               <div>
                 <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2"><ThumbsUp className="w-5 h-5 text-emerald-500" /> Key Strengths</h2>
                 <ul className="space-y-3">
@@ -179,7 +212,7 @@ const InterviewFeedback = () => {
         </div>
 
         {/* Question by Question Feedback */}
-        <div className="bg-white/10 dark:bg-slate-900/80 p-6 lg:p-8 rounded-3xl border border-slate-800 shadow-xl backdrop-blur-xl">
+      <div className="bg-white/10 dark:bg-slate-900/80 p-6 lg:p-8 rounded-3xl border border-indigo-200/10 shadow-xl backdrop-blur-xl">
            <h2 className="text-2xl font-bold text-white mb-6">Question-by-Question Evaluation</h2>
            
            <div className="space-y-6">
@@ -196,7 +229,7 @@ const InterviewFeedback = () => {
                        </div>
                        
                        <div className="bg-indigo-900/20 p-4 rounded-xl border border-indigo-500/20 text-sm text-indigo-100">
-                          <span className="text-xs font-bold text-indigo-400 uppercase tracking-widest block mb-2 flex items-center gap-1"><Zap className="w-3 h-3"/> AI Feedback</span>
+                          <span className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-2 flex items-center gap-1"><Zap className="w-3 h-3"/> AI Feedback</span>
                           {feedbacksParsed[idx] || "Acceptable answer."}
                        </div>
                     </div>
