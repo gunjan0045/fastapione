@@ -207,8 +207,42 @@ Please provide a clear interview summary. You MUST follow these rules exactly:
         return {"success": False, "error": str(e)}
 
 # ✅ CHATBOT HELPERguloyugliu
+def _fallback_chat_response(user_message: str) -> str:
+    message = (user_message or '').strip().lower()
+
+    if any(word in message for word in ['start', 'begin', 'how to start', 'interview start']):
+        return (
+            "Here’s the quickest way to start an interview:\n"
+            "• Go to Dashboard\n"
+            "• Upload a resume first if you have not done that yet\n"
+            "• Choose the interview type you want\n"
+            "• Click Start Interview and allow camera/mic access\n"
+            "• Answer the questions one by one and review your feedback at the end"
+        )
+
+    if 'resume' in message and ('upload' in message or 'add' in message):
+        return (
+            "To upload a resume:\n"
+            "• Open Dashboard\n"
+            "• Click the upload area\n"
+            "• Select a PDF resume\n"
+            "• Wait for parsing to finish\n"
+            "• Then open the resume card for details"
+        )
+
+    return (
+        "I’m available with a quick fallback response right now.\n"
+        "• Visit Dashboard to upload a resume and start practice\n"
+        "• Allow camera and microphone when prompted\n"
+        "• Review your score and feedback after the session"
+    )
+
+
 def generate_chat_response(user_message: str) -> dict:
     try:
+        if client is None:
+            return {"success": True, "reply": _fallback_chat_response(user_message)}
+
         prompt = f"""You are 'CoachBot', the automated conversational assistant for the 'AI Interview Coach' web application.
 Your goal is to politely and correctly answer the user's questions about how to use this interviewing website.
 
@@ -237,7 +271,7 @@ User's Query: {user_message}
         }
     except Exception as e:
         print("ERROR:", e)
-        return {"success": False, "error": str(e)}
+        return {"success": True, "reply": _fallback_chat_response(user_message)}
 
 # ✅ BODY LANGUAGE EVALUATOR
 def evaluate_body_language_frame(base64_image_data: str) -> dict:
@@ -246,11 +280,14 @@ def evaluate_body_language_frame(base64_image_data: str) -> dict:
         # Google GenAI accepts binary data directly for inline data
         image_bytes = base64.b64decode(base64_image_data)
         
-        prompt = """Analyze the candidate's body language in this interview frame.
+        prompt = """Analyze this live interview frame for strict proctoring compliance.
         Check for:
         1. Eye contact (Is the person looking at the camera/screen or looking away?)
         2. Posture (Are they sitting upright, slouching, leaning too close?)
         3. Face visibility (Is the face clearly visible?)
+        4. Number of visible people on screen
+        5. Whether the candidate is present in frame
+        6. Suspicious behaviors: talking on phone, using a phone, talking to someone else, unusual/excessive head movement
         
         Provide a body_language_score from 0 to 100 representing their strict professional appearance.
         Provide a 1-sentence specific feedback (e.g., 'You maintained good eye contact' or 'Try to look more at the camera.').
@@ -258,7 +295,12 @@ def evaluate_body_language_frame(base64_image_data: str) -> dict:
         Return STRICTLY JSON without markdown:
         {
             "body_language_score": 85,
-            "feedback": "You maintained good eye contact but looked away slightly."
+            "feedback": "You maintained good eye contact but looked away slightly.",
+            "person_count": 1,
+            "multiple_people_detected": false,
+            "candidate_present": true,
+            "suspicious_behavior_detected": false,
+            "suspicious_behaviors": []
         }
         """
         response = client.models.generate_content(
@@ -269,6 +311,50 @@ def evaluate_body_language_frame(base64_image_data: str) -> dict:
             ]
         )
         data = json.loads(clean_json_response(response.text))
+
+        # Normalize model output so frontend can enforce deterministic rules.
+        person_count = data.get("person_count")
+        try:
+            person_count = int(person_count)
+        except Exception:
+            person_count = 0
+        if person_count < 0:
+            person_count = 0
+
+        multiple_people_detected = bool(data.get("multiple_people_detected")) or person_count > 1
+        candidate_present = data.get("candidate_present")
+        if not isinstance(candidate_present, bool):
+            candidate_present = person_count >= 1
+
+        suspicious_behavior_detected = bool(data.get("suspicious_behavior_detected"))
+        suspicious_behaviors = data.get("suspicious_behaviors")
+        if not isinstance(suspicious_behaviors, list):
+            suspicious_behaviors = []
+        suspicious_behaviors = [str(item).strip() for item in suspicious_behaviors if str(item).strip()]
+        if suspicious_behaviors:
+            suspicious_behavior_detected = True
+
+        normalized_score = data.get("body_language_score")
+        try:
+            normalized_score = int(round(float(normalized_score)))
+        except Exception:
+            normalized_score = 50
+        normalized_score = max(0, min(100, normalized_score))
+
+        feedback = str(data.get("feedback") or "").strip()
+        if not feedback:
+            feedback = "Maintain eye contact and stay centered in frame."
+
+        data = {
+            "body_language_score": normalized_score,
+            "feedback": feedback,
+            "person_count": person_count,
+            "multiple_people_detected": multiple_people_detected,
+            "candidate_present": candidate_present,
+            "suspicious_behavior_detected": suspicious_behavior_detected,
+            "suspicious_behaviors": suspicious_behaviors,
+        }
+
         return {"success": True, "data": data}
     except Exception as e:
         print("BODY LANGUAGE ERROR:", e)

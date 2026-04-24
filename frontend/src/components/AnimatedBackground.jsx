@@ -27,7 +27,7 @@ const AnimatedBackground = () => {
       <div className="absolute inset-0 opacity-[0.07] bg-[radial-gradient(rgba(255,255,255,0.7)_0.8px,transparent_0.9px)] bg-size-[4px_4px]" />
 
       <Motion.div
-        className="absolute -top-[26%] -left-[14%] w-[58vw] h-[58vw] rounded-full bg-white/8 blur-[125px]"
+        className="absolute top-[-26%] left-[-14%] w-[58vw] h-[58vw] rounded-full bg-white/8 blur-[125px]"
         animate={{
           x: [0, 34, 0],
           y: [0, 24, 0],
@@ -36,7 +36,7 @@ const AnimatedBackground = () => {
       />
 
       <Motion.div
-        className="absolute -bottom-[14%] -right-[12%] w-[46vw] h-[46vw] rounded-full bg-white/6 blur-[115px]"
+        className="absolute bottom-[14%] right-[-12%] w-[46vw] h-[46vw] rounded-full bg-white/6 blur-[115px]"
         animate={{
           x: [0, -26, 0],
           y: [0, -18, 0],

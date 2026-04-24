@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   UploadCloud, FileText, CheckCircle, FileUp, Activity, 
@@ -31,6 +31,22 @@ const Dashboard = () => {
   const [difficulty, setDifficulty] = useState('Medium');
   const fileInputRef = useRef(null);
 
+  const fetchResumes = async () => {
+    try {
+      const res = await api.get('/resume/');
+      setResumes(res.data);
+    } catch {
+      console.error('Failed to fetch resumes'); }
+  };
+
+  const fetchInterviews = async () => {
+    try {
+      const res = await api.get('/interview/history');
+      setInterviews(Array.isArray(res.data) ? [...res.data].reverse() : []);
+    } catch (err) { setInterviews([]); }
+  };
+
+   
   useEffect(() => {
     fetchResumes();
     fetchInterviews();
@@ -57,27 +73,15 @@ const Dashboard = () => {
     return () => window.removeEventListener('resize', updateChartReady);
   }, []);
 
-  const fetchResumes = async () => {
-    try {
-      const res = await api.get('/resume/');
-      setResumes(res.data);
-    } catch (err) { console.error('Failed to fetch resumes:', err); }
-  };
-
-  const fetchInterviews = async () => {
-    try {
-      const res = await api.get('/interview/history');
-      setInterviews(Array.isArray(res.data) ? [...res.data].reverse() : []);
-    } catch (err) { setInterviews([]); }
-  };
-
   const handleDeleteResume = async (id) => {
     if (!window.confirm("Delete this resume?")) return;
     try {
       await api.delete(`/resume/${id}`);
       setResumes(prev => prev.filter(r => r.id !== id));
       if (selectedResume?.id === id) setSelectedResume(null);
-    } catch (err) { alert("Failed to delete"); }
+    } catch {
+      alert("Failed to delete");
+    }
   };
 
   const handleDeleteSession = async (id) => {
@@ -85,7 +89,9 @@ const Dashboard = () => {
     try {
       await api.delete(`/history/${id}`);
       setInterviews(prev => prev.filter(i => i.id !== id));
-    } catch (err) { alert("Failed to delete session feedback"); }
+    } catch {
+      alert("Failed to delete session feedback");
+    }
   };
 
   const handleUpload = async () => {
@@ -97,7 +103,9 @@ const Dashboard = () => {
       await api.post('/resume/upload', formData);
       setFile(null);
       fetchResumes();
-    } catch (err) { alert("Upload failed"); } 
+    } catch {
+      alert("Upload failed");
+    } 
     finally { setUploading(false); }
   };
 
@@ -112,6 +120,27 @@ const Dashboard = () => {
   const bestScore = interviews.length
     ? Math.max(...interviews.map(i => i.final_score || i.score || 0))
     : 0;
+
+  const chartData = useMemo(() => {
+    return interviews.map((item, index) => ({
+      session: `S${index + 1}`,
+      score: item.final_score || item.score || 0,
+      dateLabel: item.completed_at || item.created_at
+        ? new Date(item.completed_at || item.created_at).toLocaleDateString()
+        : 'N/A',
+    }));
+  }, [interviews]);
+
+  const renderChartTooltip = ({ active, payload, label }) => {
+    if (!active || !payload || !payload.length) return null;
+    const point = payload[0]?.payload;
+    return (
+      <div className="rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-3 py-2 shadow-xl">
+        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label} • {point?.dateLabel}</p>
+        <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">Score: {point?.score ?? 0}%</p>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -154,24 +183,53 @@ const Dashboard = () => {
           
           {/* Performance Chart */}
           <div className="bg-white/85 dark:bg-slate-900/80 p-6 rounded-3xl shadow-xl border border-slate-100 dark:border-indigo-200/10 backdrop-blur-xl">
-            <h2 className="text-lg font-bold dark:text-white mb-6 flex items-center gap-2">
-              <Activity className="w-5 h-5 text-emerald-500" /> Performance Growth
-            </h2>
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-lg font-bold dark:text-white flex items-center gap-2">
+                <Activity className="w-5 h-5 text-emerald-500" /> Performance Growth
+              </h2>
+              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                {interviews.length} Sessions Tracked
+              </span>
+            </div>
             <div ref={chartContainerRef} className="h-60 w-full min-h-60">
               {interviews.length > 0 && isChartReady ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={interviews} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <AreaChart data={chartData} margin={{ top: 10, right: 14, left: -14, bottom: 0 }}>
                     <defs>
                       <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
-                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                        <stop offset="0%" stopColor="#10b981" stopOpacity={0.45}/>
+                        <stop offset="70%" stopColor="#10b981" stopOpacity={0.18}/>
+                        <stop offset="100%" stopColor="#10b981" stopOpacity={0.02}/>
+                      </linearGradient>
+                      <linearGradient id="scoreStroke" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="#34d399" />
+                        <stop offset="100%" stopColor="#10b981" />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
-                    <XAxis dataKey="id" hide />
-                    <YAxis domain={[0, 100]} stroke="#64748b" tick={{fontSize: 12}} />
-                    <Tooltip contentStyle={{backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', color: '#fff'}} />
-                    <Area type="monotone" dataKey={i => i.final_score || i.score || 0} stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorScore)" />
+                    <CartesianGrid strokeDasharray="4 6" vertical={false} stroke="#334155" opacity={0.18} />
+                    <XAxis
+                      dataKey="session"
+                      stroke="#64748b"
+                      tick={{ fontSize: 11 }}
+                      tickMargin={8}
+                    />
+                    <YAxis
+                      domain={[0, 100]}
+                      stroke="#64748b"
+                      tick={{ fontSize: 11 }}
+                      tickFormatter={(value) => `${value}%`}
+                    />
+                    <Tooltip content={renderChartTooltip} cursor={{ stroke: '#10b981', strokeDasharray: '3 3', opacity: 0.35 }} />
+                    <Area
+                      type="monotoneX"
+                      dataKey="score"
+                      stroke="url(#scoreStroke)"
+                      strokeWidth={3}
+                      fillOpacity={1}
+                      fill="url(#colorScore)"
+                      activeDot={{ r: 5, stroke: '#10b981', strokeWidth: 2, fill: '#ecfdf5' }}
+                      dot={{ r: 2.5, stroke: '#10b981', strokeWidth: 1.5, fill: '#d1fae5' }}
+                    />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : interviews.length > 0 ? (
@@ -214,7 +272,7 @@ const Dashboard = () => {
                     return (
                       <tr key={interview.id} className="hover:bg-blue-50/50 dark:hover:bg-slate-800/70 transition-colors group">
                         <td className="py-4 px-4 text-sm text-slate-600 dark:text-slate-300 font-medium group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                          {new Date(interview.completed_at || interview.created_at || Date.now()).toLocaleDateString()}
+                          {interview.completed_at || interview.created_at ? new Date(interview.completed_at || interview.created_at).toLocaleDateString() : 'N/A'}
                         </td>
                         <td className="py-4 px-4 text-sm text-slate-500 dark:text-slate-400">
                           {interview.resume_id ? `Resume #${interview.resume_id}` : 'General Interview'}

@@ -1,19 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail, Lock, User, UserPlus, ArrowLeft, Eye, EyeOff, Sparkles, ShieldCheck, ArrowRight, BadgeCheck } from 'lucide-react';
+import { Mail, Lock, User, UserPlus, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
-import ParticlesBackground from '../components/ParticlesBackground';
-
-const REGISTER_HERO_LINES = ['Create your', 'account and start', 'improving today.'];
-
-const TypingCaret = () => (
-  <span
-    className="inline-block h-[0.88em] w-0.5 ml-1 align-[-0.08em] rounded-full bg-current shadow-[0_0_12px_rgba(123,198,255,0.9)]"
-    aria-hidden="true"
-  />
-);
 
 const GoogleBrandIcon = () => (
   <svg viewBox="0 0 24 24" className="w-4 h-4" aria-hidden="true">
@@ -42,51 +32,8 @@ const Register = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [displayedLines, setDisplayedLines] = useState(() => REGISTER_HERO_LINES.map(() => ''));
-  const [activeLine, setActiveLine] = useState(0);
-  const [showCursor, setShowCursor] = useState(true);
-  const [typingDone, setTypingDone] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    let lineIndex = 0;
-    let charIndex = 0;
-
-    const typeTimer = setInterval(() => {
-      if (lineIndex >= REGISTER_HERO_LINES.length) {
-        setTypingDone(true);
-        clearInterval(typeTimer);
-        return;
-      }
-
-      const currentLine = REGISTER_HERO_LINES[lineIndex];
-      setDisplayedLines((prev) => {
-        const next = [...prev];
-        next[lineIndex] = currentLine.slice(0, charIndex + 1);
-        return next;
-      });
-
-      charIndex += 1;
-      if (charIndex >= currentLine.length) {
-        lineIndex += 1;
-        setActiveLine(lineIndex);
-        charIndex = 0;
-      }
-    }, 45);
-
-    return () => clearInterval(typeTimer);
-  }, []);
-
-  useEffect(() => {
-    if (typingDone) return;
-
-    const cursorTimer = setInterval(() => {
-      setShowCursor((prev) => !prev);
-    }, 430);
-
-    return () => clearInterval(cursorTimer);
-  }, [typingDone]);
 
   const handleRegister = async (e) => {
     e.preventDefault();
@@ -127,255 +74,178 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen pt-28 lg:pt-32 pb-10 px-4 sm:px-6 relative overflow-hidden">
-      <ParticlesBackground />
-      <div className="absolute top-24 left-10 w-72 h-72 bg-blue-500/20 dark:bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-16 right-10 w-80 h-80 bg-indigo-500/20 dark:bg-violet-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute inset-0 grid-lines opacity-20 dark:opacity-10 pointer-events-none" />
+    <div className="fixed inset-0 z-2000 overflow-hidden bg-black text-white">
+      <main className="grid min-h-screen md:grid-cols-2">
+        <section className="flex items-center justify-center px-4 py-10 md:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.985 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.45, ease: 'easeOut' }}
+            className="w-full max-w-107.5 rounded-2xl p-7"
+            style={{
+              background: '#0a0a1a',
+              border: '1px solid rgba(99, 102, 241, 0.5)',
+              boxShadow: '0 0 0 1px rgba(99, 102, 241, 0.18), 0 0 28px rgba(99, 102, 241, 0.34), 0 0 55px rgba(6, 182, 212, 0.14), 0 20px 50px -30px rgba(0, 0, 0, 0.95)'
+            }}
+          >
+            <h1 className="text-[39px] leading-tight font-bold text-white">
+              Welcome to{' '}
+              <span className="bg-linear-to-r from-[#7c3aed] to-[#06b6d4] bg-clip-text text-transparent">AI Interview Coach</span>
+            </h1>
+            <p className="mt-3 text-sm text-[#9ca3af]">Create your account to access</p>
 
-      <div className="relative z-10 max-w-7xl mx-auto grid lg:grid-cols-[1.1fr_0.9fr] gap-8 items-stretch">
-        <motion.section
-          initial={{ opacity: 0, x: -28 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.6, ease: 'easeOut' }}
-          className="relative overflow-hidden rounded-4xl border border-white/10 bg-[#08102d]/85 dark:bg-[#08102d]/90 backdrop-blur-2xl shadow-[0_30px_80px_-35px_rgba(10,18,50,0.9)] p-7 md:p-10 lg:p-12 text-white"
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.28),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(34,211,238,0.16),transparent_30%)]" />
-          <div className="relative flex flex-col h-full justify-between gap-10">
-            <div>
-              <Link to="/" className="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors mb-8">
-                <ArrowLeft className="w-4 h-4" />
-                Back to Home
-              </Link>
-
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/5 text-xs font-semibold uppercase tracking-[0.22em] text-cyan-200">
-                <Sparkles className="w-3.5 h-3.5" /> Build your interview profile
-              </div>
-
-              <h1 className="mt-5 text-4xl md:text-6xl font-black tracking-tight leading-tight">
-                <motion.span
-                  initial={{ opacity: 0, y: 20, filter: 'blur(7px)', scale: 0.985 }}
-                  animate={displayedLines[0].length > 0 ? { opacity: 1, y: 0, filter: 'blur(0px)', scale: 1 } : { opacity: 0, y: 20, filter: 'blur(7px)', scale: 0.985 }}
-                  transition={{ duration: 0.68, ease: [0.22, 1, 0.36, 1] }}
-                  className="block min-h-[1.1em]"
-                >
-                  {displayedLines[0] || '\u00A0'}
-                  {!typingDone && activeLine === 0 && showCursor && <TypingCaret />}
-                </motion.span>
-                <motion.span
-                  initial={{ opacity: 0, y: 20, filter: 'blur(7px)', scale: 0.985 }}
-                  animate={displayedLines[1].length > 0 ? { opacity: 1, y: 0, filter: 'blur(0px)', scale: 1 } : { opacity: 0, y: 20, filter: 'blur(7px)', scale: 0.985 }}
-                  transition={{ duration: 0.68, ease: [0.22, 1, 0.36, 1] }}
-                  className="soft-gradient-text block min-h-[1.1em]"
-                >
-                  {displayedLines[1] || '\u00A0'}
-                  {!typingDone && activeLine === 1 && showCursor && <TypingCaret />}
-                </motion.span>
-                <motion.span
-                  initial={{ opacity: 0, y: 20, filter: 'blur(7px)', scale: 0.985 }}
-                  animate={displayedLines[2].length > 0 ? { opacity: 1, y: 0, filter: 'blur(0px)', scale: 1 } : { opacity: 0, y: 20, filter: 'blur(7px)', scale: 0.985 }}
-                  transition={{ duration: 0.68, ease: [0.22, 1, 0.36, 1] }}
-                  className="block min-h-[1.1em]"
-                >
-                  {displayedLines[2] || '\u00A0'}
-                  {!typingDone && activeLine === 2 && showCursor && <TypingCaret />}
-                </motion.span>
-              </h1>
-              <p className="mt-5 max-w-xl text-base md:text-lg text-white/75 leading-7">
-                Save your practice sessions, generate feedback reports, and manage profile details from a single dashboard.
-              </p>
-            </div>
-
-            <div className="grid sm:grid-cols-3 gap-4">
-              {[
-                { label: 'Fast setup', value: '< 1 min', icon: BadgeCheck },
-                { label: 'Private data', value: 'Secure', icon: ShieldCheck },
-                { label: 'Always ready', value: '24/7', icon: Sparkles },
-              ].map((item) => (
-                <div key={item.label} className="rounded-2xl border border-white/10 bg-white/6 p-4 backdrop-blur-xl">
-                  <item.icon className="w-5 h-5 text-cyan-300" />
-                  <p className="mt-4 text-2xl font-black">{item.value}</p>
-                  <p className="mt-1 text-sm text-white/65">{item.label}</p>
+            <form onSubmit={handleRegister} className="mt-7 space-y-4">
+              {error && (
+                <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                  {error}
                 </div>
-              ))}
-            </div>
+              )}
 
-            <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-4">
-              <div className="rounded-2xl border border-white/10 bg-white/6 p-4 md:p-5 backdrop-blur-xl">
-                <p className="text-xs uppercase tracking-[0.2em] text-cyan-200/90 font-semibold">Quick onboarding</p>
-                <div className="mt-4 space-y-3">
-                  {[
-                    { step: '1', title: 'Create account', note: 'Set your identity in under a minute' },
-                    { step: '2', title: 'Upload resume', note: 'Let AI adapt to your profile' },
-                    { step: '3', title: 'Start interview', note: 'Get tailored feedback and growth plan' },
-                  ].map((node) => (
-                    <div key={node.step} className="flex items-start gap-3">
-                      <div className="w-7 h-7 rounded-full bg-cyan-300/20 text-cyan-200 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">{node.step}</div>
-                      <div>
-                        <p className="font-semibold text-white">{node.title}</p>
-                        <p className="text-sm text-white/65">{node.note}</p>
-                      </div>
-                    </div>
-                  ))}
+              <div className="space-y-2">
+                <label className="text-sm text-white">Full Name</label>
+                <div className="relative">
+                  <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Enter your full name"
+                    required
+                    className="w-full rounded-[10px] border border-[#30344a] bg-[#0b0b16] py-3 pl-10 pr-3 text-white placeholder:text-[#6b7280] outline-none transition-colors focus:border-[#06b6d4]"
+                  />
                 </div>
               </div>
 
-              <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/6 p-4 md:p-5 backdrop-blur-xl">
-                <div className="absolute -right-6 -top-6 w-24 h-24 rounded-full bg-cyan-300/20 blur-xl" />
-                <div className="absolute -left-8 -bottom-8 w-24 h-24 rounded-full bg-blue-400/20 blur-xl" />
-                <motion.div
-                  animate={{ y: [0, -8, 0], rotate: [0, 4, 0] }}
-                  transition={{ duration: 4.2, repeat: Infinity, ease: 'easeInOut' }}
-                  className="relative mx-auto mt-2 w-24 h-24 rounded-full border border-cyan-200/30 bg-[radial-gradient(circle_at_35%_35%,rgba(255,255,255,0.9),rgba(125,211,252,0.32),rgba(37,99,235,0.25))] shadow-[0_0_30px_rgba(103,232,249,0.35)]"
-                />
-                <div className="relative mt-5 rounded-xl border border-white/10 bg-black/20 p-3">
-                  <p className="text-xs text-white/70">"Setup was seamless. I started practicing the same day and got clearer direction instantly."</p>
-                  <p className="mt-2 text-xs font-semibold text-cyan-100">Priya Sharma, Final Year Student</p>
+              <div className="space-y-2">
+                <label className="text-sm text-white">Email</label>
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your email/UNI ID"
+                    required
+                    className="w-full rounded-[10px] border border-[#30344a] bg-[#0b0b16] py-3 pl-10 pr-3 text-white placeholder:text-[#6b7280] outline-none transition-colors focus:border-[#06b6d4]"
+                  />
                 </div>
               </div>
-            </div>
-          </div>
-        </motion.section>
 
-        <motion.section
-          initial={{ opacity: 0, x: 28 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.65, ease: 'easeOut', delay: 0.08 }}
-          className="relative"
-        >
-          <div className="absolute inset-0 rounded-4xl bg-linear-to-b from-cyan-500/10 via-transparent to-blue-500/10 blur-2xl pointer-events-none" />
-          <div className="relative h-full rounded-4xl border border-slate-200 dark:border-indigo-200/10 bg-white/85 dark:bg-[#090f2d]/88 backdrop-blur-2xl shadow-2xl neon-ring overflow-hidden">
-            <div className="p-7 md:p-10">
-              <div className="mb-8">
-                <p className="text-xs uppercase tracking-[0.24em] text-blue-500 font-bold">Start here</p>
-                <h2 className="mt-3 text-3xl font-black text-slate-900 dark:text-white tracking-tight">Create your account</h2>
-                <p className="mt-2 text-slate-600 dark:text-slate-300">Fill in your details once and keep everything synced across the platform.</p>
-              </div>
-
-              <form onSubmit={handleRegister} className="space-y-5">
-                {error && <div className="p-3 bg-red-100 text-red-700 rounded-xl text-sm text-center">{error}</div>}
-
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 ml-1">Full Name</label>
-                  <div className="relative group">
-                    <User className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-blue-500 transition-colors" />
-                    <input
-                      type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="John Doe"
-                      required
-                      className="w-full pl-12 pr-4 py-3.5 bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-indigo-200/10 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:text-white outline-none transition-all"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 ml-1">Email Address</label>
-                  <div className="relative group">
-                    <Mail className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-blue-500 transition-colors" />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      required
-                      className="w-full pl-12 pr-4 py-3.5 bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-indigo-200/10 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:text-white outline-none transition-all"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 ml-1">Password</label>
-                  <div className="relative group">
-                    <Lock className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-blue-500 transition-colors" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      required
-                      minLength={6}
-                      className="w-full pl-12 pr-12 py-3.5 bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-indigo-200/10 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:text-white outline-none transition-all"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
-                    >
-                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 ml-1">Confirm Password</label>
-                  <div className="relative group">
-                    <Lock className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-blue-500 transition-colors" />
-                    <input
-                      type={showConfirmPassword ? 'text' : 'password'}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="••••••••"
-                      required
-                      minLength={6}
-                      className="w-full pl-12 pr-12 py-3.5 bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-indigo-200/10 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:text-white outline-none transition-all"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
-                    >
-                      {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                </div>
-
-                <button disabled={loading} type="submit" className="w-full flex items-center justify-center gap-2 py-3.5 text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 rounded-2xl font-semibold shadow-lg hover:shadow-[0_0_20px_rgba(37,99,235,0.4)] transition-all">
-                  <UserPlus className="w-5 h-5" />
-                  {loading ? 'Registering...' : 'Sign Up'}
-                </button>
-
-                <div className="relative py-2">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-slate-200 dark:border-slate-800" />
-                  </div>
-                  <div className="relative flex justify-center">
-                    <span className="px-3 text-xs uppercase tracking-widest font-semibold text-slate-500 bg-white dark:bg-[#090f2d]">or continue with</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <label className="text-sm text-white">Password</label>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    required
+                    minLength={6}
+                    className="w-full rounded-[10px] border border-[#30344a] bg-[#0b0b16] py-3 pl-10 pr-10 text-white placeholder:text-[#6b7280] outline-none transition-colors focus:border-[#06b6d4]"
+                  />
                   <button
                     type="button"
-                    onClick={() => handleSocialSignup('Google')}
-                    className="inline-flex items-center justify-center gap-2 py-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 hover:border-blue-400/60 transition-colors text-slate-700 dark:text-slate-200 font-semibold"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-cyan-300"
                   >
-                    <GoogleBrandIcon /> Sign up with Google
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm text-white">Confirm Password</label>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Confirm your password"
+                    required
+                    minLength={6}
+                    className="w-full rounded-[10px] border border-[#30344a] bg-[#0b0b16] py-3 pl-10 pr-10 text-white placeholder:text-[#6b7280] outline-none transition-colors focus:border-[#06b6d4]"
+                  />
                   <button
                     type="button"
-                    onClick={() => handleSocialSignup('GitHub')}
-                    className="inline-flex items-center justify-center gap-2 py-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 hover:border-blue-400/60 transition-colors text-slate-700 dark:text-slate-200 font-semibold"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-cyan-300"
                   >
-                    <GitHubBrandIcon /> Sign up with GitHub
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
-              </form>
+              </div>
 
-              <div className="mt-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 p-4 flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900 dark:text-white">Already have an account?</p>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">Go back to the login screen.</p>
-                </div>
-                <Link to="/login" className="inline-flex items-center gap-2 rounded-xl bg-slate-900 dark:bg-white px-4 py-2.5 text-sm font-bold text-white dark:text-slate-900 transition-transform hover:scale-[1.02]">
-                  Sign in <ArrowRight className="w-4 h-4" />
+              <div className="flex items-center justify-between text-xs">
+                <Link to="/login" className="text-[#06b6d4] transition-colors hover:text-cyan-300">
+                  Already have an account? Sign In
                 </Link>
+                <span className="text-[#06b6d4]">Secure signup</span>
               </div>
-            </div>
-          </div>
-        </motion.section>
-      </div>
+
+              <button
+                disabled={loading}
+                type="submit"
+                className="mt-2 w-full rounded-[10px] bg-linear-to-r from-[#7c3aed] to-[#6d28d9] py-3 font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+              >
+                <span className="inline-flex items-center justify-center gap-2">
+                  <UserPlus className="h-4 w-4" />
+                  {loading ? 'Creating account...' : 'Create Account'}
+                </span>
+              </button>
+
+              <div className="pt-2 text-center text-sm text-[#9ca3af]">OR</div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleSocialSignup('google')}
+                  className="inline-flex items-center justify-center gap-2 rounded-[10px] bg-[#7c3aed] py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#6d28d9]"
+                >
+                  <GoogleBrandIcon /> Google
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSocialSignup('github')}
+                  className="inline-flex items-center justify-center gap-2 rounded-[10px] bg-[#312e81] py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#3730a3]"
+                >
+                  <GitHubBrandIcon /> GitHub
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </section>
+
+        <section className="relative hidden items-center justify-center overflow-hidden md:flex">
+          <div className="pointer-events-none absolute inset-0 bg-[#000000]" aria-hidden="true" />
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              backgroundImage:
+                'radial-gradient(1px 1px at 12% 16%, rgba(255,255,255,0.95), transparent), radial-gradient(1px 1px at 28% 72%, rgba(255,255,255,0.85), transparent), radial-gradient(1.2px 1.2px at 48% 24%, rgba(255,255,255,0.95), transparent), radial-gradient(1px 1px at 64% 58%, rgba(255,255,255,0.9), transparent), radial-gradient(1px 1px at 84% 20%, rgba(255,255,255,0.88), transparent), radial-gradient(1.4px 1.4px at 90% 72%, rgba(255,255,255,0.98), transparent), radial-gradient(1px 1px at 36% 42%, rgba(255,255,255,0.72), transparent), radial-gradient(1.3px 1.3px at 58% 84%, rgba(255,255,255,0.85), transparent), radial-gradient(1px 1px at 72% 38%, rgba(255,255,255,0.92), transparent), radial-gradient(1px 1px at 18% 88%, rgba(255,255,255,0.8), transparent)',
+              opacity: 0.95
+            }}
+            aria-hidden="true"
+          />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(6,182,212,0.08),transparent_55%)]" aria-hidden="true" />
+
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.65, ease: 'easeOut', delay: 0.1 }}
+            className="relative max-w-xl px-8 text-center"
+          >
+            <h2 className="text-7xl font-black tracking-tight bg-linear-to-r from-[#7c3aed] to-[#06b6d4] bg-clip-text text-transparent">
+              AI Interview Coach
+            </h2>
+            <p className="mt-6 text-3xl italic leading-relaxed text-white/70">
+              AI Interview Coach is your career growth space where{' '}
+              <span className="font-semibold text-[#06b6d4]">candidates</span> connect and grow.
+            </p>
+          </motion.div>
+        </section>
+      </main>
     </div>
   );
 };

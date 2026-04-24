@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
+import { useTheme } from '../context/themeHook';
 import api from '../utils/api';
 import { ArrowLeft, Bell, Lock, ShieldCheck, Palette, Mail, KeyRound, Globe, Smartphone, Eye, ChevronRight, Save, Trash2, UserRoundCog, History, HelpCircle } from 'lucide-react';
 
@@ -105,6 +105,7 @@ const Settings = () => {
   const [emailVerified, setEmailVerified] = useState(false);
   const [passwordLastChangedAt, setPasswordLastChangedAt] = useState('Not available');
   const [verificationCode, setVerificationCode] = useState('');
+  const [verificationNotice, setVerificationNotice] = useState('');
   const [sendingVerification, setSendingVerification] = useState(false);
   const [confirmingVerification, setConfirmingVerification] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
@@ -260,11 +261,19 @@ const Settings = () => {
   const handleSendVerificationCode = async () => {
     setSendingVerification(true);
     try {
-      const res = await api.post('/auth/verify-email/send');
-      alert(res?.data?.message || 'Verification code sent.');
+      const recipient = (passwordForm.email || '').trim();
+      const res = await api.post('/auth/verify-email/send', {
+        recipient_email: recipient || undefined,
+      });
+      const message = res?.data?.message || 'Verification code sent.';
+      const code = res?.data?.code;
+      setVerificationNotice(message);
+      if (code) {
+        setVerificationCode(code);
+      }
     } catch (error) {
       const message = error?.response?.data?.detail || 'Failed to send verification code.';
-      alert(message);
+      setVerificationNotice(message);
     } finally {
       setSendingVerification(false);
     }
@@ -279,11 +288,16 @@ const Settings = () => {
     setConfirmingVerification(true);
     try {
       const res = await api.post('/auth/verify-email/confirm', { code: verificationCode.trim() });
+      if (res?.data?.access_token) {
+        localStorage.setItem('token', res.data.access_token);
+      }
       setEmailVerified(true);
       setVerificationCode('');
+      setVerificationNotice('Email verified successfully.');
       alert(res?.data?.message || 'Email verified successfully.');
     } catch (error) {
       const message = error?.response?.data?.detail || 'Email verification failed.';
+      setVerificationNotice(message);
       alert(message);
     } finally {
       setConfirmingVerification(false);
@@ -531,6 +545,12 @@ const Settings = () => {
                       <ShieldCheck className="w-4 h-4" /> Verify Email
                     </button>
                   </div>
+
+                  {verificationNotice && (
+                    <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-700 dark:text-blue-200">
+                      {verificationNotice}
+                    </div>
+                  )}
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 p-4 space-y-4">

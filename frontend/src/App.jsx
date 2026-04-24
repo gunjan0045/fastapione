@@ -21,37 +21,68 @@ import OAuthCallback from './pages/OAuthCallback';
 import AnimatedBackground from './components/AnimatedBackground';
 import './App.css';
 
+function AuthLayout({ children }) {
+  return (
+    <div className="relative min-h-screen overflow-hidden bg-black text-white">
+      {children}
+    </div>
+  );
+}
+
+function AppLayout() {
+  return (
+    <div className="app-shell relative min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col w-full overflow-x-hidden">
+      <AnimatedBackground />
+      <Navbar />
+      <main className="flex-1 w-full relative z-10">
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/features" element={<Features />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/contact" element={<Contact />} />
+
+          <Route path="/oauth/callback" element={<OAuthCallback />} />
+          <Route path="/security/password-change-result" element={<PasswordChangeResult />} />
+
+          <Route element={<ProtectedRoute />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/interview" element={<InterviewSelection />} />
+            <Route path="/interview/book-expert" element={<HumanInterviewBooking />} />
+            <Route path="/interview/setup" element={<Interview />} />
+            <Route path="/feedback/:id" element={<InterviewFeedback />} />
+          </Route>
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
 function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
         <Router>
-          <div className="app-shell relative min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col w-full overflow-x-hidden">
-            <AnimatedBackground />
-            <Navbar />
-            <main className="flex-1 w-full relative z-10">
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/features" element={<Features />} />
-                <Route path="/about" element={<About />} />
-                <Route path="/contact" element={<Contact />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
-                <Route path="/oauth/callback" element={<OAuthCallback />} />
-                <Route path="/security/password-change-result" element={<PasswordChangeResult />} />
-                
-                <Route element={<ProtectedRoute />}>
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/profile" element={<Profile />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="/interview" element={<InterviewSelection />} />
-                  <Route path="/interview/book-expert" element={<HumanInterviewBooking />} />
-                  <Route path="/interview/setup" element={<Interview />} />
-                  <Route path="/feedback/:id" element={<InterviewFeedback />} />
-                </Route>
-              </Routes>
-            </main>
-          </div>
+          <Routes>
+            <Route
+              path="/login"
+              element={
+                <AuthLayout>
+                  <Login />
+                </AuthLayout>
+              }
+            />
+            <Route
+              path="/register"
+              element={
+                <AuthLayout>
+                  <Register />
+                </AuthLayout>
+              }
+            />
+            <Route path="*" element={<AppLayout />} />
+          </Routes>
         </Router>
       </AuthProvider>
     </ThemeProvider>

@@ -199,7 +199,7 @@ const Home = () => {
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {trustStats.map((item) => (
-                <div key={item.label} className="glass-panel-light dark:glass-panel rounded-2xl p-3 text-left">
+                <div key={item.label} className="glass-panel rounded-2xl p-3 text-left">
                   <p className="text-xl font-extrabold text-slate-900 dark:text-white">{item.value}</p>
                   <p className="text-xs text-slate-600 dark:text-slate-300">{item.label}</p>
                 </div>
@@ -238,21 +238,21 @@ const Home = () => {
         </div>
 
         <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="glass-panel-light dark:glass-panel rounded-2xl p-5 flex items-start gap-3">
+          <div className="glass-panel rounded-2xl p-5 flex items-start gap-3">
             <ShieldCheck className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold text-slate-900 dark:text-white">Structured Evaluation</p>
               <p className="text-sm text-slate-600 dark:text-slate-300">Technical, communication, confidence aur body-language scoring ek hi flow me.</p>
             </div>
           </div>
-          <div className="glass-panel-light dark:glass-panel rounded-2xl p-5 flex items-start gap-3">
+          <div className="glass-panel rounded-2xl p-5 flex items-start gap-3">
             <Clock3 className="w-5 h-5 text-fuchsia-400 shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold text-slate-900 dark:text-white">24x7 Practice Window</p>
               <p className="text-sm text-slate-600 dark:text-slate-300">Jab chaho tab interview run karo, aur har session ka report save hota rahega.</p>
             </div>
           </div>
-          <div className="glass-panel-light dark:glass-panel rounded-2xl p-5 flex items-start gap-3">
+          <div className="glass-panel rounded-2xl p-5 flex items-start gap-3">
             <Users className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold text-slate-900 dark:text-white">AI + Human Expert Mode</p>
@@ -400,7 +400,7 @@ const Home = () => {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: false, amount: 0.28 }}
               transition={revealTransition(0.7, 0.46)}
-              className="glass-panel-light dark:glass-panel rounded-2xl p-6"
+              className="glass-panel rounded-2xl p-6"
             >
               <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed mb-5">"{item.quote}"</p>
               <p className="font-semibold text-slate-900 dark:text-white">{item.author}</p>
