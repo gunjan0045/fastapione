@@ -13,6 +13,33 @@ class UserCreate(UserBase):
 class UserResponse(UserBase):
     id: int
     created_at: datetime
+    email_notifications: bool = True
+    newsletter_enabled: bool = False
+    profile_public: bool = True
+    two_factor_enabled: bool = False
+    dark_mode_preference: bool = True
+    data_export_enabled: bool = True
+    language: str = "English"
+    region: str = "India"
+    email_verified: bool = False
+    password_last_changed_at: Optional[datetime] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    country: Optional[str] = None
+    postal_code: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    government_id_type: Optional[str] = None
+    government_id_number: Optional[str] = None
+    college_name: Optional[str] = None
+    school_name: Optional[str] = None
+    highest_qualification: Optional[str] = None
+    profession: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    github_url: Optional[str] = None
+    portfolio_url: Optional[str] = None
+    bio: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -20,6 +47,49 @@ class UserResponse(UserBase):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+
+class UserSettingsUpdate(BaseModel):
+    name: Optional[str] = None
+    email_notifications: Optional[bool] = None
+    newsletter_enabled: Optional[bool] = None
+    profile_public: Optional[bool] = None
+    two_factor_enabled: Optional[bool] = None
+    dark_mode_preference: Optional[bool] = None
+    data_export_enabled: Optional[bool] = None
+    language: Optional[str] = None
+    region: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    country: Optional[str] = None
+    postal_code: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    government_id_type: Optional[str] = None
+    government_id_number: Optional[str] = None
+    college_name: Optional[str] = None
+    school_name: Optional[str] = None
+    highest_qualification: Optional[str] = None
+    profession: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    github_url: Optional[str] = None
+    portfolio_url: Optional[str] = None
+    bio: Optional[str] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    email: EmailStr
+    current_password: str
+    new_password: str
+
+
+class TestEmailRequest(BaseModel):
+    recipient_email: Optional[EmailStr] = None
+
+
+class VerifyEmailCodeRequest(BaseModel):
+    code: str
 
 class ResumeResponse(BaseModel):
     id: int
@@ -55,6 +125,7 @@ class InterviewHistoryResponse(BaseModel):
     per_question_feedback: Optional[str] = None
     technical_score: int
     communication_score: int
+    problem_solving_score: int
     body_language_score: int
     final_score: int
     final_feedback: Optional[str] = None

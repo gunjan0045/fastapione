@@ -51,7 +51,7 @@ const ResumeDetailsModal = ({ isOpen, onClose, resume, onDelete }) => {
     <AnimatePresence>
       {isOpen && (
         <div 
-          className="fixed inset-0 z-[100] flex items-start justify-center p-4 sm:p-6 pb-6"
+          className="fixed inset-0 z-100 flex items-start justify-center p-4 sm:p-6 pb-6"
           style={{ paddingTop: '100px' }} // 100px explicit top padding to fully clear the navbar
         >
           {/* Backdrop */}

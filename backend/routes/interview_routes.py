@@ -1,5 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from io import BytesIO
 import json
 import cv2
 import numpy as np
@@ -14,6 +16,8 @@ from typing import List
 from pydantic import BaseModel
 from ai_service import generate_interview_question, generate_feedback, generate_interview_summary, generate_chat_response, evaluate_body_language_frame
 from interview_engine import generate_initial_questions, evaluate_and_generate_followup, analyze_submitted_code
+from pdf_report import build_feedback_pdf
+from notification_service import send_interview_summary_email
 
 # ✅ Pydantic models
 class GetQuestionRequest(BaseModel):
@@ -34,15 +38,16 @@ class InterviewSummaryRequest(BaseModel):
 
 class CreateHistoryRequest(BaseModel):
     resume_id: int
-    questions: str
-    answers: str
-    per_question_feedback: str
-    technical_score: int
-    communication_score: int
-    body_language_score: int
-    final_score: int
-    final_feedback: str
-    body_language_feedback: str
+    questions: str = "[]"
+    answers: str = "[]"
+    per_question_feedback: str = "[]"
+    technical_score: int = 0
+    communication_score: int = 0
+    problem_solving_score: int = 0
+    body_language_score: int = 0
+    final_score: int = 0
+    final_feedback: str = ""
+    body_language_feedback: str = ""
 
 class ChatMessageRequest(BaseModel):
     message: str
@@ -114,7 +119,13 @@ def start_dynamic_interview(
 
     res = generate_initial_questions(parsed_data, request.mode)
     if not res.get("success"):
-        raise HTTPException(status_code=500, detail=res.get("error"))
+        detail = str(res.get("error") or "Unable to generate initial question")
+        lowered = detail.lower()
+        if "503" in lowered or "unavailable" in lowered or "high demand" in lowered:
+            raise HTTPException(status_code=503, detail=detail)
+        if "resume" in lowered and "not found" in lowered:
+            raise HTTPException(status_code=404, detail=detail)
+        raise HTTPException(status_code=500, detail=detail)
 
     return res["data"]
 
@@ -180,9 +191,27 @@ def get_interview_history(
     ).order_by(models.InterviewHistory.id.desc()).all()
 
 
+@router.get("/history/{history_id}", response_model=schemas.InterviewHistoryResponse)
+def get_single_interview_history(
+    history_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    record = db.query(models.InterviewHistory).filter(
+        models.InterviewHistory.user_id == current_user.id,
+        models.InterviewHistory.id == history_id
+    ).first()
+    
+    if not record:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+        
+    return record
+
+
 @router.post("/history")
 def create_interview_history(
     request: CreateHistoryRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -194,6 +223,7 @@ def create_interview_history(
         per_question_feedback=request.per_question_feedback,
         technical_score=request.technical_score,
         communication_score=request.communication_score,
+        problem_solving_score=request.problem_solving_score,
         body_language_score=request.body_language_score,
         final_score=request.final_score,
         final_feedback=request.final_feedback,
@@ -202,6 +232,19 @@ def create_interview_history(
     db.add(record)
     db.commit()
     db.refresh(record)
+
+    if getattr(current_user, "email_notifications", True):
+        background_tasks.add_task(
+            send_interview_summary_email,
+            recipient_email=current_user.email,
+            candidate_name=current_user.name,
+            final_score=request.final_score,
+            technical_score=request.technical_score,
+            communication_score=request.communication_score,
+            problem_solving_score=request.problem_solving_score,
+            body_language_score=request.body_language_score,
+        )
+
     return record
 
 
@@ -222,6 +265,73 @@ def delete_interview_history(
     db.delete(record)
     db.commit()
     return {"success": True}
+
+
+@router.get("/history/{history_id}/pdf")
+def download_interview_history_pdf(
+    history_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    record = db.query(models.InterviewHistory).filter(
+        models.InterviewHistory.id == history_id,
+        models.InterviewHistory.user_id == current_user.id
+    ).first()
+
+    if not record:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+
+    resume = db.query(models.Resume).filter(
+        models.Resume.id == record.resume_id,
+        models.Resume.user_id == current_user.id
+    ).first() if record.resume_id else None
+
+    question_count = 0
+    try:
+        parsed_questions = json.loads(record.questions or "[]")
+        if isinstance(parsed_questions, list):
+            question_count = len(parsed_questions)
+    except Exception:
+        question_count = 0
+
+    estimated_minutes = max(4, question_count * 2) if question_count else 0
+
+    history = {
+        "id": record.id,
+        "user_id": record.user_id,
+        "resume_id": record.resume_id,
+        "candidate_name": current_user.name,
+        "candidate_email": current_user.email,
+        "interview_title": f"Interview Session #{record.id}",
+        "resume_filename": getattr(resume, "filename", None),
+        "domain_hint": " ".join([
+            getattr(resume, "filename", "") or "",
+            getattr(resume, "skills", "") or "",
+            getattr(resume, "parsed_data", "") or "",
+            record.questions or "",
+        ]),
+        "session_duration": f"~{estimated_minutes} minutes" if estimated_minutes else "Not available",
+        "questions": record.questions,
+        "answers": record.answers,
+        "per_question_feedback": record.per_question_feedback,
+        "technical_score": record.technical_score,
+        "communication_score": record.communication_score,
+        "problem_solving_score": getattr(record, "problem_solving_score", 0) or 0,
+        "body_language_score": record.body_language_score,
+        "final_score": record.final_score,
+        "final_feedback": record.final_feedback,
+        "body_language_feedback": record.body_language_feedback,
+        "completed_at": record.completed_at,
+    }
+
+    pdf_bytes = build_feedback_pdf(history)
+    filename = f"interview-feedback-{history_id}.pdf"
+
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
 
 
 @router.post("/chat")

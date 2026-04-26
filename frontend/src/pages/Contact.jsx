@@ -12,7 +12,7 @@ const Contact = () => {
         Extra padding bottom pb-32 allows scrolling past the chatbot 
         lg:pr-10 or flex wrapper ensures it's readable.
       */}
-      <div className="pt-28 pb-[500px] min-h-[calc(100vh-80px)] px-6 lg:pl-12 lg:pr-[400px] xl:pr-16 w-full relative z-10 flex justify-center lg:justify-start xl:justify-center">
+      <div className="pt-28 pb-125 min-h-[calc(100vh-80px)] px-6 lg:pl-12 lg:pr-100 xl:pr-16 w-full relative z-10 flex justify-center lg:justify-start xl:justify-center">
         <div className="w-full max-w-5xl animate-in fade-in duration-500">
           
           {/* Heading Section */}

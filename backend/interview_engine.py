@@ -1,5 +1,7 @@
 import os
 import json
+import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from google import genai
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -8,6 +10,51 @@ if GEMINI_API_KEY:
     client = genai.Client(api_key=GEMINI_API_KEY)
 
 MODEL_ID = "gemini-2.5-flash"
+
+TRANSIENT_MARKERS = (
+    "503",
+    "UNAVAILABLE",
+    "high demand",
+    "429",
+    "RESOURCE_EXHAUSTED",
+    "deadline",
+    "timeout",
+)
+
+
+def _is_transient_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(marker.lower() in message for marker in TRANSIENT_MARKERS)
+
+
+def _generate_content_with_retry(prompt: str, max_attempts: int = 3, per_attempt_timeout: int = 8):
+    if client is None:
+        raise RuntimeError("GEMINI client is not initialized")
+
+    last_error = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(
+                    client.models.generate_content,
+                    model=MODEL_ID,
+                    contents=prompt,
+                )
+                return future.result(timeout=per_attempt_timeout)
+        except FutureTimeoutError:
+            last_error = RuntimeError(
+                f"Gemini request timeout after {per_attempt_timeout}s (attempt {attempt}/{max_attempts})"
+            )
+        except Exception as exc:
+            last_error = exc
+            if not _is_transient_error(exc):
+                break
+
+        if attempt < max_attempts:
+            # Exponential backoff for temporary model load spikes.
+            time.sleep(min(2 ** (attempt - 1), 4))
+
+    raise last_error or RuntimeError("Gemini request failed")
 
 def clean_json(text: str) -> str:
     text = text.strip()
@@ -33,10 +80,7 @@ Return ONLY a valid JSON:
 }}
 """
     try:
-        res = client.models.generate_content(
-            model=MODEL_ID,
-            contents=prompt
-        )
+        res = _generate_content_with_retry(prompt, max_attempts=3, per_attempt_timeout=5)
         print("Google GenAI raw initial response:", res.text)
         data = json.loads(clean_json(res.text))
         return {"success": True, "data": data}
@@ -87,10 +131,7 @@ Return STRICTLY JSON:
 }}
 """
     try:
-        res = client.models.generate_content(
-            model=MODEL_ID,
-            contents=prompt
-        )
+        res = _generate_content_with_retry(prompt, max_attempts=2, per_attempt_timeout=6)
         data = json.loads(clean_json(res.text))
         return {"success": True, "data": data}
     except Exception as e:
@@ -131,10 +172,7 @@ Return STRICTLY JSON:
 }}
 """
     try:
-        res = client.models.generate_content(
-            model=MODEL_ID,
-            contents=prompt
-        )
+        res = _generate_content_with_retry(prompt, max_attempts=2, per_attempt_timeout=8)
         data = json.loads(clean_json(res.text))
         return {"success": True, "data": data}
     except Exception as e:
