@@ -120,3 +120,4 @@ htmlcov/
 
 # Vite cache
 .vite/
+backend/sql_app.db
