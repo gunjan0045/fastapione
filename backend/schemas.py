@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr, field_validator
 from datetime import datetime
 from typing import Optional, Any
-import json # For parsing JSON strings in the ResumeResponse schema
+import json 
 
 class UserBase(BaseModel):
     email: EmailStr
