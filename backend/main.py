@@ -1,8 +1,8 @@
 from pathlib import Path
-from env_utils import load_env_file
+from dotenv import load_dotenv
 
 # Load backend/.env reliably regardless of the working directory used to start uvicorn.
-load_env_file(Path(__file__).resolve().parent / ".env", override=True)
+load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env", override=True)
 
 import os
 from fastapi import FastAPI
@@ -44,6 +44,7 @@ def ensure_user_settings_schema():
             "language": "ALTER TABLE users ADD COLUMN language VARCHAR DEFAULT 'English'",
             "region": "ALTER TABLE users ADD COLUMN region VARCHAR DEFAULT 'India'",
             "email_verified": "ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT 0",
+            "pending_email": "ALTER TABLE users ADD COLUMN pending_email VARCHAR",
             "email_verification_code": "ALTER TABLE users ADD COLUMN email_verification_code VARCHAR",
             "email_verification_expires_at": "ALTER TABLE users ADD COLUMN email_verification_expires_at DATETIME",
             "password_last_changed_at": "ALTER TABLE users ADD COLUMN password_last_changed_at DATETIME",

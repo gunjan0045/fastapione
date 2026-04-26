@@ -1,6 +1,6 @@
 import React from 'react';
-import { Mail, Phone, MapPin, Send } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { Mail, Phone, MapPin, Send } from 'lucide-react';
 import Chatbot from '../components/Chatbot';
 import ParticlesBackground from '../components/ParticlesBackground';
 

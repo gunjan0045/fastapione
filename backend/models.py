@@ -20,6 +20,7 @@ class User(Base):
     language = Column(String, default="English")
     region = Column(String, default="India")
     email_verified = Column(Boolean, default=False)
+    pending_email = Column(String, nullable=True)
     email_verification_code = Column(String, nullable=True)
     email_verification_expires_at = Column(DateTime, nullable=True)
     password_last_changed_at = Column(DateTime, nullable=True)

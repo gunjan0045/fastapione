@@ -7,6 +7,34 @@ import CodingInterviewPanel from '../components/CodingInterviewPanel';
 import InterviewInstructionsModal from '../components/InterviewInstructionsModal';
 import { motion, AnimatePresence } from 'framer-motion';
 
+const INTERVIEW_DURATION_MINUTES = {
+  easy: 10,
+  medium: 12,
+  intermediate: 12,
+  hard: 15,
+};
+
+const PROCTORING_GRACE_MS = 10000;
+
+const getInterviewDurationSeconds = (difficulty) => {
+  const key = String(difficulty || 'medium').trim().toLowerCase();
+  const minutes = INTERVIEW_DURATION_MINUTES[key] || 12;
+  return minutes * 60;
+};
+
+const formatTimer = (seconds) => {
+  const safe = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
+  const mins = Math.floor(safe / 60);
+  const secs = safe % 60;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+};
+
+const normalizeScore = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.max(0, Math.min(100, Math.round(numeric)));
+};
+
 const Interview = () => {
   const { user } = useAuth();
   const location = useLocation();
@@ -32,21 +60,33 @@ const Interview = () => {
   const [codeLanguage, setCodeLanguage] = useState('python');
   const [status, setStatus] = useState('Instructions'); // Instructions, Ready, Running, Paused, Completed
   const [errorToast, setErrorToast] = useState(null);
+  const [warningCountdown, setWarningCountdown] = useState(null);
   const [isDictating, setIsDictating] = useState(false);
+  const [skillContext, setSkillContext] = useState([]);
+  const [remainingSeconds, setRemainingSeconds] = useState(null);
 
   // AV State & Controls
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const recognitionRef = useRef(null);
   const pollingInterval = useRef(null);
+  const sessionTimerRef = useRef(null);
   const abortTimerRef = useRef(null);
   const inactiveTimerRef = useRef(null);
+  const pausedAutoStopTimerRef = useRef(null);
+  const warningToastTimerRef = useRef(null);
+  const warningCountdownIntervalRef = useRef(null);
+  const multiplePeopleAutoStopTimerRef = useRef(null);
+  const suspiciousAutoStopTimerRef = useRef(null);
+  const absenceAutoStopTimerRef = useRef(null);
   const typingTimerRef = useRef(null);
   const chatLogIdRef = useRef(0);
   const hasShownInactiveWarningRef = useRef(false);
   const preferredVoiceRef = useRef(null);
   const ttsWarnedRef = useRef(false);
   const shouldKeepDictatingRef = useRef(false);
+  const hasActiveRecognitionSessionRef = useRef(false);
+  const lastNoSpeechLogAtRef = useRef(0);
   const dictationBaseRef = useRef('');
   const dictationCommittedRef = useRef('');
   const userAnswerRef = useRef('');
@@ -55,6 +95,14 @@ const Interview = () => {
   const loadingRef = useRef(false);
   const isSubmittingRef = useRef(false);
   const lastBodyFeedbackLogAtRef = useRef(0);
+  const hasAutoEndedByTimerRef = useRef(false);
+  const multiplePeopleActiveRef = useRef(false);
+  const suspiciousBehaviorActiveRef = useRef(false);
+  const absenceActiveRef = useRef(false);
+  const hasWarnedMultiplePeopleRef = useRef(false);
+  const hasWarnedSuspiciousBehaviorRef = useRef(false);
+  const hasWarnedAbsenceRef = useRef(false);
+  const hasWarnedPausedRef = useRef(false);
   const [stream, setStream] = useState(null);
   const [camOn, setCamOn] = useState(true);
   const [micOn, setMicOn] = useState(true);
@@ -92,6 +140,7 @@ const Interview = () => {
   useEffect(() => {
     return () => {
       stopAV();
+      if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
       shouldKeepDictatingRef.current = false;
       if (recognitionRef.current) {
         try {
@@ -104,12 +153,53 @@ const Interview = () => {
       if (abortTimerRef.current) clearTimeout(abortTimerRef.current);
       if (inactiveTimerRef.current) clearTimeout(inactiveTimerRef.current);
       if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+      if (pausedAutoStopTimerRef.current) clearTimeout(pausedAutoStopTimerRef.current);
+      if (warningToastTimerRef.current) clearTimeout(warningToastTimerRef.current);
+      if (warningCountdownIntervalRef.current) clearInterval(warningCountdownIntervalRef.current);
+      if (multiplePeopleAutoStopTimerRef.current) clearTimeout(multiplePeopleAutoStopTimerRef.current);
+      if (suspiciousAutoStopTimerRef.current) clearTimeout(suspiciousAutoStopTimerRef.current);
+      if (absenceAutoStopTimerRef.current) clearTimeout(absenceAutoStopTimerRef.current);
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel();
         window.speechSynthesis.onvoiceschanged = null;
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (status !== 'Running' || remainingSeconds === null || sessionTimerRef.current) {
+      if (status !== 'Running' && sessionTimerRef.current) {
+        clearInterval(sessionTimerRef.current);
+        sessionTimerRef.current = null;
+      }
+      return;
+    }
+
+    sessionTimerRef.current = window.setInterval(() => {
+      setRemainingSeconds((prev) => {
+        if (prev === null) return prev;
+        return Math.max(0, prev - 1);
+      });
+    }, 1000);
+
+    return () => {
+      if (sessionTimerRef.current) {
+        clearInterval(sessionTimerRef.current);
+        sessionTimerRef.current = null;
+      }
+    };
+  }, [status, remainingSeconds]);
+
+  useEffect(() => {
+    if (status !== 'Running') return;
+    if (remainingSeconds !== 0) return;
+    if (hasAutoEndedByTimerRef.current) return;
+
+    hasAutoEndedByTimerRef.current = true;
+    addLog('system', 'Interview time limit reached. Ending session now.');
+    setErrorToast('Interview auto-stopped because the selected time limit is over.');
+    endInterview(false);
+  }, [remainingSeconds, status]);
 
   // Protect back navigation mapping
   useEffect(() => {
@@ -148,37 +238,24 @@ const Interview = () => {
     };
   }, [status, navigate, resumeId]);
 
-  // Tab switch protection with a generous inactivity window.
-  // This avoids accidental auto-end when browser permission dialogs briefly blur the tab.
+  // Strict tab-switch protection: end interview immediately on tab change.
   useEffect(() => {
-    const clearInactiveTimer = () => {
-      if (inactiveTimerRef.current) {
-        clearTimeout(inactiveTimerRef.current);
-        inactiveTimerRef.current = null;
-      }
-    };
-
     const handleVisibilityChange = () => {
       const interviewActive = status === 'Running' || status === 'Paused';
 
       if (!interviewActive) {
-        clearInactiveTimer();
         hasShownInactiveWarningRef.current = false;
         return;
       }
 
       if (document.hidden) {
         if (!hasShownInactiveWarningRef.current) {
-          addLog('system', 'You switched tabs. Return within 45 seconds to continue interview.');
+          addLog('system', '[Proctoring Violation] Tab switching detected. Interview is ending immediately.');
           hasShownInactiveWarningRef.current = true;
         }
-        clearInactiveTimer();
-        inactiveTimerRef.current = setTimeout(() => {
-          setErrorToast('Interview ended because the tab remained inactive for too long.');
-          endInterview(true);
-        }, 45000);
+        setErrorToast('Interview auto-stopped because tab switching was detected.');
+        endInterview(true);
       } else {
-        clearInactiveTimer();
         hasShownInactiveWarningRef.current = false;
       }
     };
@@ -187,9 +264,71 @@ const Interview = () => {
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      clearInactiveTimer();
     };
   }, [status]);
+
+  useEffect(() => {
+    if (status !== 'Paused') {
+      hasWarnedPausedRef.current = false;
+      if (pausedAutoStopTimerRef.current) {
+        clearTimeout(pausedAutoStopTimerRef.current);
+        pausedAutoStopTimerRef.current = null;
+      }
+      return;
+    }
+
+    if (!hasWarnedPausedRef.current) {
+      addLog('system', '[Proctoring Warning] Interview pause detected. Resume immediately or the interview will end.');
+      showTimedWarning('Warning: Interview paused. Resume within 10 seconds or interview will stop.');
+      hasWarnedPausedRef.current = true;
+    }
+
+    if (pausedAutoStopTimerRef.current) {
+      clearTimeout(pausedAutoStopTimerRef.current);
+      pausedAutoStopTimerRef.current = null;
+    }
+
+    pausedAutoStopTimerRef.current = setTimeout(() => {
+      setErrorToast('Interview auto-stopped because it remained paused for too long.');
+      endInterview(true);
+    }, PROCTORING_GRACE_MS);
+  }, [status]);
+
+  const clearWarningCountdown = useCallback(() => {
+    if (warningCountdownIntervalRef.current) {
+      clearInterval(warningCountdownIntervalRef.current);
+      warningCountdownIntervalRef.current = null;
+    }
+    setWarningCountdown(null);
+  }, []);
+
+  const showTimedWarning = useCallback((message) => {
+    setErrorToast(message);
+    clearWarningCountdown();
+    setWarningCountdown(Math.ceil(PROCTORING_GRACE_MS / 1000));
+
+    warningCountdownIntervalRef.current = setInterval(() => {
+      setWarningCountdown((prev) => {
+        if (!Number.isFinite(prev)) return prev;
+        if (prev <= 1) {
+          if (warningCountdownIntervalRef.current) {
+            clearInterval(warningCountdownIntervalRef.current);
+            warningCountdownIntervalRef.current = null;
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    if (warningToastTimerRef.current) {
+      clearTimeout(warningToastTimerRef.current);
+    }
+    warningToastTimerRef.current = setTimeout(() => {
+      setErrorToast((prev) => (prev === message ? null : prev));
+      clearWarningCountdown();
+    }, PROCTORING_GRACE_MS);
+  }, [clearWarningCountdown]);
 
   // Handle AV Init
   useEffect(() => {
@@ -258,19 +397,90 @@ const Interview = () => {
     setStream(null);
   };
 
+  const attachAudioTrack = useCallback(async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('MICROPHONE_API_UNAVAILABLE');
+    }
+
+    const audioPermissionStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    const [audioTrack] = audioPermissionStream.getAudioTracks();
+    if (!audioTrack) {
+      throw new Error('MICROPHONE_TRACK_MISSING');
+    }
+
+    if (stream) {
+      const existingAudioTracks = stream.getAudioTracks();
+      if (existingAudioTracks.length === 0) {
+        stream.addTrack(audioTrack);
+      } else {
+        existingAudioTracks.forEach(track => {
+          track.enabled = true;
+        });
+      }
+      setMicOn(stream.getAudioTracks().some(track => track.enabled));
+      setStream(stream);
+      return;
+    }
+
+    const newStream = new MediaStream([audioTrack]);
+    setStream(newStream);
+    setMicOn(true);
+  }, [stream]);
+
+  const ensureMicAccess = useCallback(async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      addLog('system', 'Microphone API is not available in this browser.');
+      return false;
+    }
+
+    try {
+      const hasAudioTrack = Boolean(stream && stream.getAudioTracks().length > 0);
+      if (hasAudioTrack) {
+        stream.getAudioTracks().forEach(track => {
+          track.enabled = true;
+        });
+        setMicOn(true);
+        return true;
+      }
+
+      await attachAudioTrack();
+      addLog('system', 'Microphone access granted. You can now dictate your answer.');
+      return true;
+    } catch (err) {
+      const permissionName = err?.name || '';
+      if (permissionName === 'NotAllowedError' || permissionName === 'SecurityError') {
+        addLog('system', 'Microphone permission blocked. Allow mic access in browser settings and retry.');
+      } else if (permissionName === 'NotFoundError') {
+        addLog('system', 'No microphone device found. Connect a mic and try again.');
+      } else {
+        addLog('system', 'Unable to access microphone right now. Please retry.');
+      }
+      setMicOn(false);
+      return false;
+    }
+  }, [attachAudioTrack, stream]);
+
   const toggleCamera = () => {
+    if (status === 'Running' && camOn) {
+      addLog('system', '[Proctoring Violation] Camera turned off during interview. Ending session immediately.');
+      setErrorToast('Interview auto-stopped because the camera was turned off.');
+      endInterview(true);
+      return;
+    }
+
     if (stream) {
       stream.getVideoTracks().forEach(t => t.enabled = !camOn);
     }
     setCamOn(!camOn);
   };
 
-  const toggleMic = () => {
+  const toggleMic = async () => {
     const turningMicOff = micOn;
-    if (stream) {
-      stream.getAudioTracks().forEach(t => t.enabled = !micOn);
-    }
+
     if (turningMicOff) {
+      if (stream) {
+        stream.getAudioTracks().forEach(t => t.enabled = false);
+      }
       shouldKeepDictatingRef.current = false;
       setIsDictating(false);
       if (recognitionRef.current) {
@@ -280,8 +490,12 @@ const Interview = () => {
           // Ignore stop errors.
         }
       }
+      setMicOn(false);
+      return;
     }
-    setMicOn(!micOn);
+
+    const micEnabled = await ensureMicAccess();
+    setMicOn(micEnabled);
   };
 
   const initSpeech = () => {
@@ -290,7 +504,7 @@ const Interview = () => {
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
-      recognition.lang = 'en-IN';
+      recognition.lang = /^hi/i.test(navigator.language || '') ? 'hi-IN' : 'en-US';
       recognition.maxAlternatives = 1;
 
       recognition.onresult = (e) => {
@@ -321,7 +535,9 @@ const Interview = () => {
       };
 
       recognition.onstart = () => {
+        hasActiveRecognitionSessionRef.current = true;
         setIsDictating(true);
+        addLog('system', 'Microphone recording enabled...');
       };
 
       recognition.onerror = (event) => {
@@ -329,7 +545,9 @@ const Interview = () => {
 
         if (code === 'not-allowed' || code === 'service-not-allowed') {
           shouldKeepDictatingRef.current = false;
+          hasActiveRecognitionSessionRef.current = false;
           setIsDictating(false);
+          setMicOn(false);
           addLog('system', 'Microphone permission blocked. Allow mic access and try again.');
           return;
         }
@@ -339,11 +557,36 @@ const Interview = () => {
         }
 
         if (code === 'audio-capture') {
+          shouldKeepDictatingRef.current = false;
+          hasActiveRecognitionSessionRef.current = false;
+          setIsDictating(false);
+          setMicOn(false);
           addLog('system', 'No microphone device detected. Check your input device.');
+          return;
         }
+
+        if (code === 'network') {
+          shouldKeepDictatingRef.current = false;
+          hasActiveRecognitionSessionRef.current = false;
+          setIsDictating(false);
+          addLog('system', 'Speech recognition network error. If using Brave, disable Shields for localhost or use Chrome.');
+          return;
+        }
+
+        if (code === 'no-speech') {
+          const now = Date.now();
+          if (now - lastNoSpeechLogAtRef.current > 12000) {
+            addLog('system', 'No speech detected. Speak clearly near the microphone.');
+            lastNoSpeechLogAtRef.current = now;
+          }
+          return;
+        }
+
+        addLog('system', `Voice recognition error (${code || 'unknown'}). Please retry.`);
       };
 
       recognition.onend = () => {
+        hasActiveRecognitionSessionRef.current = false;
         setIsDictating(false);
 
         const shouldRestart =
@@ -358,7 +601,9 @@ const Interview = () => {
             try {
               recognition.start();
             } catch (_) {
-              // Ignore invalid state errors when the recognizer is restarting.
+              shouldKeepDictatingRef.current = false;
+              setIsDictating(false);
+              addLog('system', 'Microphone dictation stopped unexpectedly. Tap "Dictate Answer" to start again.');
             }
           }, 180);
         }
@@ -485,6 +730,8 @@ const Interview = () => {
   }
 
   const handleStartInterview = async () => {
+    hasAutoEndedByTimerRef.current = false;
+    setRemainingSeconds(getInterviewDurationSeconds(difficulty));
     setStatus('Running');
     setLoading(true);
     setLoadingRetries(0);
@@ -507,7 +754,8 @@ const Interview = () => {
         try {
           const resPromise = api.post('/interview/start-dynamic', {
             resume_id: parsedResumeId,
-            mode: type
+            mode: type,
+            difficulty: difficulty,
           });
           const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => {
@@ -523,6 +771,7 @@ const Interview = () => {
           }
 
           setQuestion(res.data);
+          setSkillContext(Array.isArray(res?.data?.skill_context) ? res.data.skill_context : []);
           animateAiMessage(firstQuestion);
 
           if (!pollingInterval.current) {
@@ -587,6 +836,94 @@ const Interview = () => {
         const res = await api.post('/interview/evaluate-body-language', {
           frame_base64: dataUrl
         });
+        if(res.data) {
+           const personCount = Number(res.data.person_count || 0);
+           const multiplePeopleDetected = Boolean(res.data.multiple_people_detected) || personCount > 1;
+           const candidatePresent = res.data.candidate_present !== false;
+           const suspiciousBehaviorDetected = Boolean(res.data.suspicious_behavior_detected);
+           const suspiciousBehaviors = Array.isArray(res.data.suspicious_behaviors)
+             ? res.data.suspicious_behaviors.filter(Boolean).map((item) => String(item))
+             : [];
+
+           if (multiplePeopleDetected) {
+             multiplePeopleActiveRef.current = true;
+             if (!hasWarnedMultiplePeopleRef.current) {
+               addLog('system', '[Proctoring Warning] Multiple persons detected. Ensure only one person is visible immediately.');
+               showTimedWarning('Warning: Multiple persons detected. Resolve within 10 seconds or interview will stop.');
+               hasWarnedMultiplePeopleRef.current = true;
+               if (multiplePeopleAutoStopTimerRef.current) {
+                 clearTimeout(multiplePeopleAutoStopTimerRef.current);
+               }
+               multiplePeopleAutoStopTimerRef.current = setTimeout(() => {
+                 if (!multiplePeopleActiveRef.current) return;
+                 addLog('system', '[Proctoring Violation] Multiple persons persisted after warning. Interview is ending.');
+                 setErrorToast('Interview auto-stopped because more than one person remained on screen.');
+                 endInterview(true);
+               }, PROCTORING_GRACE_MS);
+             }
+           } else {
+             multiplePeopleActiveRef.current = false;
+             hasWarnedMultiplePeopleRef.current = false;
+             if (multiplePeopleAutoStopTimerRef.current) {
+               clearTimeout(multiplePeopleAutoStopTimerRef.current);
+               multiplePeopleAutoStopTimerRef.current = null;
+             }
+           }
+
+           if (!candidatePresent) {
+             absenceActiveRef.current = true;
+             if (!hasWarnedAbsenceRef.current) {
+               addLog('system', '[Proctoring Warning] Candidate is not clearly visible. Return to the camera immediately.');
+               showTimedWarning('Warning: Candidate not visible. Resolve within 10 seconds or interview will stop.');
+               hasWarnedAbsenceRef.current = true;
+               if (absenceAutoStopTimerRef.current) {
+                 clearTimeout(absenceAutoStopTimerRef.current);
+               }
+               absenceAutoStopTimerRef.current = setTimeout(() => {
+                 if (!absenceActiveRef.current) return;
+                 addLog('system', '[Proctoring Violation] Candidate absence persisted after warning. Interview is ending.');
+                 setErrorToast('Interview auto-stopped because candidate was absent from camera.');
+                 endInterview(true);
+               }, PROCTORING_GRACE_MS);
+             }
+           } else {
+             absenceActiveRef.current = false;
+             hasWarnedAbsenceRef.current = false;
+             if (absenceAutoStopTimerRef.current) {
+               clearTimeout(absenceAutoStopTimerRef.current);
+               absenceAutoStopTimerRef.current = null;
+             }
+           }
+
+           if (suspiciousBehaviorDetected) {
+             suspiciousBehaviorActiveRef.current = true;
+             if (!hasWarnedSuspiciousBehaviorRef.current) {
+               const suspiciousSummary = suspiciousBehaviors.length
+                 ? suspiciousBehaviors.join(', ')
+                 : 'suspicious behavior';
+               addLog('system', `[Proctoring Warning] Suspicious behavior detected: ${suspiciousSummary}. Stop immediately.`);
+               showTimedWarning('Warning: Suspicious behavior detected. Resolve within 10 seconds or interview will stop.');
+               hasWarnedSuspiciousBehaviorRef.current = true;
+               if (suspiciousAutoStopTimerRef.current) {
+                 clearTimeout(suspiciousAutoStopTimerRef.current);
+               }
+               suspiciousAutoStopTimerRef.current = setTimeout(() => {
+                 if (!suspiciousBehaviorActiveRef.current) return;
+                 addLog('system', '[Proctoring Violation] Suspicious behavior persisted after warning. Interview is ending.');
+                 setErrorToast('Interview auto-stopped because suspicious behavior continued after warning.');
+                 endInterview(true);
+               }, PROCTORING_GRACE_MS);
+             }
+           } else {
+             suspiciousBehaviorActiveRef.current = false;
+             hasWarnedSuspiciousBehaviorRef.current = false;
+             if (suspiciousAutoStopTimerRef.current) {
+               clearTimeout(suspiciousAutoStopTimerRef.current);
+               suspiciousAutoStopTimerRef.current = null;
+             }
+           }
+        }
+
         if(res.data && res.data.feedback) {
            const now = Date.now();
            if (now - lastBodyFeedbackLogAtRef.current > 30000) {
@@ -638,7 +975,9 @@ const Interview = () => {
             question: question.question,
             answer: currentA,
             difficulty: difficulty,
-            history: history
+            history: history,
+            skill_context: skillContext,
+            mode: type,
           });
 
           const timeoutPromise = new Promise((_, reject) =>
@@ -651,15 +990,32 @@ const Interview = () => {
           const res = await Promise.race([resPromise, timeoutPromise]);
           const data = res.data;
 
-          setHistory(prev => [...prev, { q: question.question, a: currentA, f: data.feedback }]);
+          const technicalScore = normalizeScore(data.technical_score);
+          const communicationScore = normalizeScore(data.communication_score);
+          const problemSolvingScore = normalizeScore(data.problem_solving_score);
+          const confidenceScore = normalizeScore(data.confidence_score);
+
+          setHistory(prev => [
+            ...prev,
+            {
+              q: question.question,
+              a: currentA,
+              f: data.feedback,
+              technical_score: technicalScore,
+              communication_score: communicationScore,
+              problem_solving_score: problemSolvingScore,
+              confidence_score: confidenceScore,
+            },
+          ]);
           setDifficulty(data.next_difficulty || difficulty);
 
+          const answeredCount = history.length + 1;
           setScores(s => ({
-            technical: data.technical_score ? Math.round((s.technical + data.technical_score) / (s.technical ? 2 : 1)) : s.technical,
-            communication: data.communication_score ? Math.round((s.communication + data.communication_score) / (s.communication ? 2 : 1)) : s.communication,
-            problem_solving: data.problem_solving_score ? Math.round((s.problem_solving + data.problem_solving_score) / (s.problem_solving ? 2 : 1)) : s.problem_solving,
-            confidence: data.confidence_score ? Math.round((s.confidence + data.confidence_score) / (s.confidence ? 2 : 1)) : s.confidence,
-            body_language: s.body_language || 80
+            technical: technicalScore !== null ? Math.round(((s.technical || 0) * (answeredCount - 1) + technicalScore) / answeredCount) : s.technical,
+            communication: communicationScore !== null ? Math.round(((s.communication || 0) * (answeredCount - 1) + communicationScore) / answeredCount) : s.communication,
+            problem_solving: problemSolvingScore !== null ? Math.round(((s.problem_solving || 0) * (answeredCount - 1) + problemSolvingScore) / answeredCount) : s.problem_solving,
+            confidence: confidenceScore !== null ? Math.round(((s.confidence || 0) * (answeredCount - 1) + confidenceScore) / answeredCount) : s.confidence,
+            body_language: s.body_language
           }));
 
           if (data.feedback) {
@@ -719,10 +1075,23 @@ const Interview = () => {
   const persistHistory = async (isAbandoned = false) => {
     if (!resumeId || history.length === 0) return null;
 
-    const technical_score = scores.technical || 50;
-    const communication_score = scores.communication || 50;
-    const problem_solving_score = scores.problem_solving || 50;
-    const confidence_score = scores.confidence || 50;
+    const scoredEntries = history.filter((item) => (
+      Number.isFinite(Number(item?.technical_score)) &&
+      Number.isFinite(Number(item?.communication_score)) &&
+      Number.isFinite(Number(item?.problem_solving_score)) &&
+      Number.isFinite(Number(item?.confidence_score))
+    ));
+
+    const averageFrom = (key, fallbackValue) => {
+      if (!scoredEntries.length) return fallbackValue;
+      const total = scoredEntries.reduce((sum, item) => sum + Number(item[key] || 0), 0);
+      return Math.round(total / scoredEntries.length);
+    };
+
+    const technical_score = averageFrom('technical_score', scores.technical || 50);
+    const communication_score = averageFrom('communication_score', scores.communication || 50);
+    const problem_solving_score = averageFrom('problem_solving_score', scores.problem_solving || 50);
+    const confidence_score = averageFrom('confidence_score', scores.confidence || 50);
     const body_language_score = scores.body_language || 50;
 
     const final_score = Math.round(
@@ -737,7 +1106,13 @@ const Interview = () => {
       resume_id: parseInt(resumeId),
       questions: JSON.stringify(history.map(h => h.q)),
       answers: JSON.stringify(history.map(h => h.a)),
-      per_question_feedback: JSON.stringify(history.map(h => h.f)),
+      per_question_feedback: JSON.stringify(history.map(h => ({
+        feedback: h.f,
+        technical_score: h.technical_score,
+        communication_score: h.communication_score,
+        problem_solving_score: h.problem_solving_score,
+        confidence_score: h.confidence_score,
+      }))),
       technical_score,
       communication_score,
       problem_solving_score,
@@ -752,6 +1127,11 @@ const Interview = () => {
 
   const endInterview = async (abandoned = false) => {
     setStatus('Completed');
+    if (sessionTimerRef.current) {
+      clearInterval(sessionTimerRef.current);
+      sessionTimerRef.current = null;
+    }
+    setRemainingSeconds(null);
     shouldKeepDictatingRef.current = false;
     setIsDictating(false);
     if (recognitionRef.current) {
@@ -765,13 +1145,32 @@ const Interview = () => {
     if (pollingInterval.current) clearInterval(pollingInterval.current);
     if (abortTimerRef.current) clearTimeout(abortTimerRef.current);
     if (inactiveTimerRef.current) clearTimeout(inactiveTimerRef.current);
+    if (pausedAutoStopTimerRef.current) clearTimeout(pausedAutoStopTimerRef.current);
+    if (warningToastTimerRef.current) clearTimeout(warningToastTimerRef.current);
+    if (warningCountdownIntervalRef.current) clearInterval(warningCountdownIntervalRef.current);
+    if (multiplePeopleAutoStopTimerRef.current) clearTimeout(multiplePeopleAutoStopTimerRef.current);
+    if (suspiciousAutoStopTimerRef.current) clearTimeout(suspiciousAutoStopTimerRef.current);
+    if (absenceAutoStopTimerRef.current) clearTimeout(absenceAutoStopTimerRef.current);
     clearAiPresentation();
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
+
+    multiplePeopleActiveRef.current = false;
+    suspiciousBehaviorActiveRef.current = false;
+    absenceActiveRef.current = false;
+    hasWarnedMultiplePeopleRef.current = false;
+    hasWarnedSuspiciousBehaviorRef.current = false;
+    hasWarnedAbsenceRef.current = false;
+    hasWarnedPausedRef.current = false;
     
     try {
-       await persistHistory(abandoned);
+       const savedSessionId = await persistHistory(abandoned);
+
+       if (!abandoned && savedSessionId) {
+         navigate(`/feedback/${savedSessionId}`, { replace: true });
+         return;
+       }
     } catch(e){
        console.error("Failed to save history", e);
        if (abandoned) {
@@ -808,8 +1207,19 @@ const Interview = () => {
       {errorToast && (
          <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-red-600 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-red-400/50">
             <AlertCircle className="w-5 h-5" />
-            <span className="font-bold">{errorToast}</span>
-            <button onClick={() => setErrorToast(null)} className="ml-4 hover:opacity-75"><X className="w-4 h-4" /></button>
+            <span className="font-bold">
+              {errorToast}
+              {warningCountdown !== null && warningCountdown >= 0 ? ` (${warningCountdown}s)` : ''}
+            </span>
+            <button
+              onClick={() => {
+                setErrorToast(null);
+                clearWarningCountdown();
+              }}
+              className="ml-4 hover:opacity-75"
+            >
+              <X className="w-4 h-4" />
+            </button>
          </div>
       )}
       
@@ -831,6 +1241,9 @@ const Interview = () => {
                    <span className={`w-3 h-3 rounded-full ${status === 'Running' ? 'bg-red-500 animate-pulse' : status === 'Paused' ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
                    <span className="text-white font-bold">{status}</span>
                 </div>
+               {remainingSeconds !== null && status !== 'Completed' && (
+                <p className="mt-2 text-xs text-blue-300 font-semibold">Time Left: {formatTimer(remainingSeconds)}</p>
+               )}
              </div>
              <span className="px-3 py-1 bg-blue-600/20 border border-blue-500/30 rounded-xl text-blue-400 text-xs font-bold self-end">
                {difficulty}
@@ -985,14 +1398,15 @@ const Interview = () => {
                       </div>
                       <div className="flex justify-between items-center mt-2 px-1">
                         <button 
-                          onClick={() => {
+                          onClick={async () => {
                             const rec = recognitionRef.current;
                             if (!rec) {
                               addLog('system', 'Voice dictation is not supported in this browser.');
                               return;
                             }
-                            if (!micOn) {
-                              addLog('system', 'Microphone is muted. Please enable mic first.');
+
+                            const micReady = await ensureMicAccess();
+                            if (!micReady) {
                               return;
                             }
 
@@ -1012,9 +1426,13 @@ const Interview = () => {
                             dictationCommittedRef.current = '';
                             shouldKeepDictatingRef.current = true;
                             try {
+                              if (!hasActiveRecognitionSessionRef.current) {
+                                setIsDictating(true);
+                              }
                               rec.start();
-                              addLog('system', 'Microphone recording enabled...');
                             } catch (_) {
+                              shouldKeepDictatingRef.current = false;
+                              setIsDictating(false);
                               addLog('system', 'Could not start microphone dictation. Please retry.');
                             }
                           }}

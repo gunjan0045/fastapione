@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr, field_validator
 from datetime import datetime
 from typing import Optional, Any
-import json
+import json # For parsing JSON strings in the ResumeResponse schema
 
 class UserBase(BaseModel):
     email: EmailStr
@@ -90,6 +90,10 @@ class TestEmailRequest(BaseModel):
 
 class VerifyEmailCodeRequest(BaseModel):
     code: str
+
+
+class VerifyEmailSendRequest(BaseModel):
+    recipient_email: Optional[EmailStr] = None
 
 class ResumeResponse(BaseModel):
     id: int

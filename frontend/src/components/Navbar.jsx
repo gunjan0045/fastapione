@@ -9,6 +9,7 @@ const Navbar = () => {
   const { user, loading, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const isAuthRoute = /^\/(login|register)(\/|$)/.test(location.pathname);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -29,10 +30,12 @@ const Navbar = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Close mobile menu on route change
+  // Close mobile menu on route change (with condition to prevent unnecessary renders)
   useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [location]);
+    if (mobileMenuOpen) {
+      setMobileMenuOpen(false);
+    }
+  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = () => {
     logout();
@@ -52,6 +55,10 @@ const Navbar = () => {
     { name: 'About', path: '/about' },
     { name: 'Contact', path: '/contact' },
   ];
+
+  if (isAuthRoute) {
+    return null;
+  }
 
   return (
     <nav className="fixed top-3 left-4 right-4 md:left-8 md:right-8 z-50">

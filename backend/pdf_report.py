@@ -47,6 +47,12 @@ def _safe_json_list(raw_value: Any) -> List[Any]:
 
 
 def _safe_text(value: Any, fallback: str = "-") -> str:
+    if isinstance(value, dict):
+        preferred = value.get("feedback")
+        if preferred is not None:
+            value = preferred
+        else:
+            return fallback
     if value is None:
         return fallback
     text = str(value).strip()
@@ -85,16 +91,34 @@ def _split_summary_sections(summary_text: str) -> Dict[str, str]:
     return {key: "\n".join(lines).strip() for key, lines in sections.items()}
 
 
-def _infer_improvement(score: int, feedback_text: str) -> str:
+def _extract_score_from_feedback(feedback_text: str):
+    text = feedback_text or ""
+    match_10 = re.search(r"(\d{1,2})\s*/\s*10", text)
+    if match_10:
+        return min(100, int(match_10.group(1)) * 10)
+
+    match_100 = re.search(r"(\d{1,3})\s*/\s*100", text)
+    if match_100:
+        return min(100, int(match_100.group(1)))
+
+    match_percent = re.search(r"(?:score\s*[:\-]?\s*)(\d{1,3})\s*%", text, flags=re.IGNORECASE)
+    if match_percent:
+        return min(100, int(match_percent.group(1)))
+
+    return None
+
+
+def _infer_improvement(score, feedback_text: str) -> str:
     feedback = (feedback_text or "").lower()
     suggestions: List[str] = []
 
-    if score < 50:
-        suggestions.append("Strengthen the answer structure and explain the core idea more clearly.")
-    elif score < 70:
-        suggestions.append("Add more depth and a concrete example to make the answer stronger.")
-    else:
-        suggestions.append("Keep the same structure and make the response a little sharper and more concise.")
+    if score is not None:
+        if score < 50:
+            suggestions.append("Strengthen the answer structure and explain the core idea more clearly.")
+        elif score < 70:
+            suggestions.append("Add more depth and a concrete example to make the answer stronger.")
+        else:
+            suggestions.append("Keep the same structure and make the response a little sharper and more concise.")
 
     if any(keyword in feedback for keyword in ["technical", "code", "implementation", "algorithm"]):
         suggestions.append("Mention trade-offs, edge cases, or implementation details where relevant.")
@@ -104,6 +128,9 @@ def _infer_improvement(score: int, feedback_text: str) -> str:
         suggestions.append("Keep steady eye contact, sit upright, and avoid looking away too often.")
     if any(keyword in feedback for keyword in ["example", "specific"]):
         suggestions.append("Add one real project example or situation-based answer.")
+
+    if not suggestions:
+        suggestions.append("No explicit issue markers were found. Review this answer against the provided AI feedback and refine clarity.")
 
     # Deduplicate while keeping order.
     seen = set()
@@ -212,21 +239,18 @@ def _metric_diagnosis(metric: str, score: int) -> str:
     return f"{metric}: Priority improvement area. Build fundamentals first, then move to real mock simulations."
 
 
-def _answer_blueprint(question: str, feedback: str) -> str:
-    q = (question or "").lower()
-    f = (feedback or "").lower()
+def _action_point_from_feedback(feedback: str) -> str:
+    text = (feedback or "").strip()
+    if not text:
+        return "No detailed feedback available for this question."
 
-    if "introduce" in q or "yourself" in q or "hr" in q:
-        return "Use a 45-second structure: Background -> Core Skills -> Most relevant project -> Why this role."
-    if "project" in q or "built" in q:
-        return "Explain using Problem -> Your Approach -> Tech Stack -> Result with measurable impact."
-    if "algorithm" in q or "complexity" in q or "code" in q:
-        return "State brute-force idea first, then optimized approach, complexity, edge cases, and test sample."
-    if "database" in q or "api" in q or "system" in q:
-        return "Cover requirements, design decision, trade-offs, scalability note, and failure handling."
-    if "communication" in f or "clarity" in f:
-        return "Keep 3 crisp points, avoid long sentences, and finish with one confident summary line."
-    return "Use Context -> Approach -> Outcome format; include one concrete example and one improvement reflection."
+    lines = [line.strip(" -*\t") for line in text.splitlines() if line.strip()]
+    for line in lines:
+        lowered = line.lower()
+        if any(token in lowered for token in ["improve", "should", "try", "consider", "next time", "work on"]):
+            return line
+
+    return lines[0] if lines else "No detailed feedback available for this question."
 
 
 def _draw_header(canv: canvas.Canvas, title: str, subtitle: str) -> None:
@@ -716,28 +740,22 @@ def build_feedback_pdf(history: Dict[str, Any]) -> bytes:
         for index, question in enumerate(questions):
             answer = _safe_text(answers[index] if index < len(answers) else None, "No answer recorded.")
             feedback = _safe_text(feedbacks[index] if index < len(feedbacks) else None, "Acceptable answer.")
-            score_guess = 0
-            match = re.search(r"(\d{1,3})\s*/\s*10", feedback)
-            if match:
-                score_guess = min(100, int(match.group(1)) * 10)
-            elif match := re.search(r"(\d{1,3})\s*/\s*100", feedback):
-                score_guess = min(100, int(match.group(1)))
-            else:
-                score_guess = final_score
-
-            improvement = _infer_improvement(score_guess, feedback)
+            per_question_score = _extract_score_from_feedback(feedback)
+            improvement = _infer_improvement(per_question_score, feedback)
+            score_line = f"{per_question_score}%" if per_question_score is not None else "Not explicitly provided"
             q_table = Table([
                 [Paragraph(f"<b>Q{index + 1}.</b> {question}", styles["SmallBody"])],
                 [Paragraph(f"<b>Your Answer:</b> {answer}", styles["SmallBody"])],
                 [Paragraph(f"<b>AI Feedback:</b> {feedback.replace(chr(10), '<br/>')}", styles["SmallBody"])],
-                [Paragraph(f"<b>Better Answer Blueprint:</b> {_answer_blueprint(question, feedback)}", styles["SmallBody"])],
+                [Paragraph(f"<b>Per-question Score:</b> {score_line}", styles["SmallBody"])],
+                [Paragraph(f"<b>Action Point:</b> {_action_point_from_feedback(feedback)}", styles["SmallBody"])],
                 [Paragraph(f"<b>Improvement:</b> {improvement}", styles["SmallBody"])],
             ], colWidths=[PAGE_WIDTH - 80])
             q_table.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eff6ff")),
                 ("BACKGROUND", (0, 1), (-1, 2), colors.white),
-                ("BACKGROUND", (0, 3), (-1, 3), colors.HexColor("#f5f3ff")),
-                ("BACKGROUND", (0, 4), (-1, 4), colors.HexColor("#fff7ed")),
+                ("BACKGROUND", (0, 3), (-1, 4), colors.HexColor("#f5f3ff")),
+                ("BACKGROUND", (0, 5), (-1, 5), colors.HexColor("#fff7ed")),
                 ("BOX", (0, 0), (-1, -1), 0.75, colors.HexColor("#cbd5e1")),
                 ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#e2e8f0")),
                 ("LEFTPADDING", (0, 0), (-1, -1), 10),

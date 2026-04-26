@@ -22,7 +22,7 @@ const ResumeCard = ({ resume, isSelected, onSelect, onDelete }) => {
           <div className="flex items-center gap-3 mt-1">
             <span className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
               <Calendar className="w-3 h-3" />
-              {new Date(resume.created_at || Date.now()).toLocaleDateString()}
+              {resume.created_at ? new Date(resume.created_at).toLocaleDateString() : 'N/A'}
             </span>
             {resume.parsed && (
               <span className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium">

@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from io import BytesIO
 import json
+import re
 import cv2
 import numpy as np
 import base64
@@ -17,7 +18,7 @@ from pydantic import BaseModel
 from ai_service import generate_interview_question, generate_feedback, generate_interview_summary, generate_chat_response, evaluate_body_language_frame
 from interview_engine import generate_initial_questions, evaluate_and_generate_followup, analyze_submitted_code
 from pdf_report import build_feedback_pdf
-from notification_service import send_interview_summary_email
+from notification_service import send_interview_report_email
 
 # ✅ Pydantic models
 class GetQuestionRequest(BaseModel):
@@ -53,6 +54,87 @@ class ChatMessageRequest(BaseModel):
     message: str
 
 router = APIRouter(tags=["interview"])
+
+
+def _clamp_score(value, fallback: int = 50) -> int:
+    try:
+        return max(0, min(100, int(round(float(value)))))
+    except Exception:
+        return fallback
+
+
+def _average_score(entries: list, key: str):
+    values = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        raw_value = entry.get(key)
+        try:
+            numeric = float(raw_value)
+        except Exception:
+            continue
+        if numeric < 0 or numeric > 100:
+            continue
+        values.append(numeric)
+
+    if not values:
+        return None
+    return int(round(sum(values) / len(values)))
+
+
+def _build_history_payload(record, current_user, resume):
+    question_count = 0
+    try:
+        parsed_questions = json.loads(record.questions or "[]")
+        if isinstance(parsed_questions, list):
+            question_count = len(parsed_questions)
+    except Exception:
+        question_count = 0
+
+    estimated_minutes = max(4, question_count * 2) if question_count else 0
+
+    return {
+        "id": record.id,
+        "user_id": record.user_id,
+        "resume_id": record.resume_id,
+        "candidate_name": current_user.name,
+        "candidate_email": current_user.email,
+        "interview_title": f"Interview Session #{record.id}",
+        "resume_filename": getattr(resume, "filename", None),
+        "domain_hint": " ".join([
+            getattr(resume, "filename", "") or "",
+            getattr(resume, "skills", "") or "",
+            getattr(resume, "parsed_data", "") or "",
+            record.questions or "",
+        ]),
+        "session_duration": f"~{estimated_minutes} minutes" if estimated_minutes else "Not available",
+        "questions": record.questions,
+        "answers": record.answers,
+        "per_question_feedback": record.per_question_feedback,
+        "technical_score": record.technical_score,
+        "communication_score": record.communication_score,
+        "problem_solving_score": getattr(record, "problem_solving_score", 0) or 0,
+        "body_language_score": record.body_language_score,
+        "final_score": record.final_score,
+        "final_feedback": record.final_feedback,
+        "body_language_feedback": record.body_language_feedback,
+        "completed_at": record.completed_at,
+    }
+
+
+def _send_interview_report_email_task(recipient_email: str, candidate_name: str, history_payload: dict) -> None:
+    try:
+        pdf_bytes = build_feedback_pdf(dict(history_payload))
+    except Exception as exc:
+        print(f"[Interview] Failed to build report PDF for email: {exc}")
+        return
+
+    try:
+        sent = send_interview_report_email(recipient_email, candidate_name, history_payload, pdf_bytes)
+        if not sent:
+            print(f"[Interview] Report email could not be sent to {recipient_email}")
+    except Exception as exc:
+        print(f"[Interview] Report email task failed for {recipient_email}: {exc}")
 
 
 # ✅ FIX: Lazy MediaPipe Loader
@@ -95,6 +177,7 @@ def book_expert(
 class StartDynamicRequest(BaseModel):
     resume_id: int
     mode: str
+    difficulty: str = "Medium"
 
 @router.post("/start-dynamic")
 def start_dynamic_interview(
@@ -117,7 +200,7 @@ def start_dynamic_interview(
         except Exception:
             pass
 
-    res = generate_initial_questions(parsed_data, request.mode)
+    res = generate_initial_questions(parsed_data, request.mode, request.difficulty)
     if not res.get("success"):
         detail = str(res.get("error") or "Unable to generate initial question")
         lowered = detail.lower()
@@ -135,6 +218,8 @@ class EvaluateDynamicRequest(BaseModel):
     answer: str
     difficulty: str
     history: List[dict]
+    skill_context: List[str] = []
+    mode: str = "Mixed"
 
 @router.post("/evaluate-dynamic")
 def evaluate_dynamic(
@@ -142,7 +227,14 @@ def evaluate_dynamic(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    res = evaluate_and_generate_followup(request.question, request.history, request.answer, request.difficulty)
+    res = evaluate_and_generate_followup(
+        request.question,
+        request.history,
+        request.answer,
+        request.difficulty,
+        request.skill_context,
+        request.mode,
+    )
     if not res.get("success"):
         raise HTTPException(status_code=500, detail=res.get("error"))
 
@@ -215,17 +307,49 @@ def create_interview_history(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+    feedback_items = []
+    try:
+        parsed_feedback = json.loads(request.per_question_feedback or "[]")
+        if isinstance(parsed_feedback, list):
+            feedback_items = parsed_feedback
+    except Exception:
+        feedback_items = []
+
+    technical_score = _average_score(feedback_items, "technical_score")
+    communication_score = _average_score(feedback_items, "communication_score")
+    problem_solving_score = _average_score(feedback_items, "problem_solving_score")
+
+    if technical_score is None:
+        technical_score = _clamp_score(request.technical_score, fallback=50)
+    if communication_score is None:
+        communication_score = _clamp_score(request.communication_score, fallback=50)
+    if problem_solving_score is None:
+        problem_solving_score = _clamp_score(request.problem_solving_score, fallback=50)
+
+    body_language_score = _clamp_score(request.body_language_score, fallback=50)
+    confidence_score = _average_score(feedback_items, "confidence_score")
+    if confidence_score is None:
+        confidence_score = 50
+
+    final_score = int(round(
+        (technical_score * 0.4) +
+        (communication_score * 0.2) +
+        (problem_solving_score * 0.2) +
+        (confidence_score * 0.1) +
+        (body_language_score * 0.1)
+    ))
+
     record = models.InterviewHistory(
         user_id=current_user.id,
         resume_id=request.resume_id,
         questions=request.questions,
         answers=request.answers,
         per_question_feedback=request.per_question_feedback,
-        technical_score=request.technical_score,
-        communication_score=request.communication_score,
-        problem_solving_score=request.problem_solving_score,
-        body_language_score=request.body_language_score,
-        final_score=request.final_score,
+        technical_score=technical_score,
+        communication_score=communication_score,
+        problem_solving_score=problem_solving_score,
+        body_language_score=body_language_score,
+        final_score=final_score,
         final_feedback=request.final_feedback,
         body_language_feedback=request.body_language_feedback
     )
@@ -233,16 +357,18 @@ def create_interview_history(
     db.commit()
     db.refresh(record)
 
-    if getattr(current_user, "email_notifications", True):
+    resume = db.query(models.Resume).filter(
+        models.Resume.id == record.resume_id,
+        models.Resume.user_id == current_user.id
+    ).first() if record.resume_id else None
+
+    if current_user.email and current_user.email_notifications:
+        history_payload = _build_history_payload(record, current_user, resume)
         background_tasks.add_task(
-            send_interview_summary_email,
-            recipient_email=current_user.email,
-            candidate_name=current_user.name,
-            final_score=request.final_score,
-            technical_score=request.technical_score,
-            communication_score=request.communication_score,
-            problem_solving_score=request.problem_solving_score,
-            body_language_score=request.body_language_score,
+            _send_interview_report_email_task,
+            current_user.email,
+            current_user.name,
+            history_payload,
         )
 
     return record
@@ -286,43 +412,7 @@ def download_interview_history_pdf(
         models.Resume.user_id == current_user.id
     ).first() if record.resume_id else None
 
-    question_count = 0
-    try:
-        parsed_questions = json.loads(record.questions or "[]")
-        if isinstance(parsed_questions, list):
-            question_count = len(parsed_questions)
-    except Exception:
-        question_count = 0
-
-    estimated_minutes = max(4, question_count * 2) if question_count else 0
-
-    history = {
-        "id": record.id,
-        "user_id": record.user_id,
-        "resume_id": record.resume_id,
-        "candidate_name": current_user.name,
-        "candidate_email": current_user.email,
-        "interview_title": f"Interview Session #{record.id}",
-        "resume_filename": getattr(resume, "filename", None),
-        "domain_hint": " ".join([
-            getattr(resume, "filename", "") or "",
-            getattr(resume, "skills", "") or "",
-            getattr(resume, "parsed_data", "") or "",
-            record.questions or "",
-        ]),
-        "session_duration": f"~{estimated_minutes} minutes" if estimated_minutes else "Not available",
-        "questions": record.questions,
-        "answers": record.answers,
-        "per_question_feedback": record.per_question_feedback,
-        "technical_score": record.technical_score,
-        "communication_score": record.communication_score,
-        "problem_solving_score": getattr(record, "problem_solving_score", 0) or 0,
-        "body_language_score": record.body_language_score,
-        "final_score": record.final_score,
-        "final_feedback": record.final_feedback,
-        "body_language_feedback": record.body_language_feedback,
-        "completed_at": record.completed_at,
-    }
+    history = _build_history_payload(record, current_user, resume)
 
     pdf_bytes = build_feedback_pdf(history)
     filename = f"interview-feedback-{history_id}.pdf"

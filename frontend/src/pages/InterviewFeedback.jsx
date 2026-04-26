@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import { Activity, Star, Eye, Code, ThumbsUp, ArrowLeft, Loader2, Award, Zap, BrainCircuit, Mic, CheckCircle2, AlertCircle, Download } from 'lucide-react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
@@ -9,33 +8,28 @@ import ParticlesBackground from '../components/ParticlesBackground';
 const InterviewFeedback = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
   
   const [sessionData, setSessionData] = useState(null);
   const [loading, setLoading] = useState(true);
-   const [downloadLoading, setDownloadLoading] = useState(false);
-
-  useEffect(() => {
-    fetchSession();
-  }, [id]);
+  const [downloadLoading, setDownloadLoading] = useState(false);
 
   const fetchSession = async () => {
     try {
-      const res = await api.get('/interview/history');
-      const data = res.data.find(h => h.id === parseInt(id));
-      if (data) {
-        setSessionData(data);
-      } else {
-        alert("Session not found.");
-        navigate('/dashboard');
-      }
+         const res = await api.get(`/interview/history/${id}`);
+         setSessionData(res.data);
     } catch (err) {
       console.error(err);
+         alert("Session not found.");
       navigate('/dashboard');
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   if (loading) return (
      <div className="min-h-screen bg-slate-900 flex justify-center items-center">
@@ -45,11 +39,48 @@ const InterviewFeedback = () => {
 
   if (!sessionData) return null;
 
+   const metricDefinitions = [
+      {
+         key: 'technical_score',
+         label: 'Technical',
+         value: sessionData.technical_score || 0,
+         strengthText: 'Technical understanding looked strong with good concept coverage.',
+         improveText: 'Revise core concepts and explain trade-offs more clearly in technical answers.',
+      },
+      {
+         key: 'communication_score',
+         label: 'Communication',
+         value: sessionData.communication_score || 0,
+         strengthText: 'Communication was clear and structured.',
+         improveText: 'Use shorter, structured responses with one concrete example in each answer.',
+      },
+      {
+         key: 'problem_solving_score',
+         label: 'Problem Solving',
+         value: sessionData.problem_solving_score || 0,
+         strengthText: 'Problem-solving approach was methodical and logical.',
+         improveText: 'State assumptions first, then walk through steps and edge cases explicitly.',
+      },
+      {
+         key: 'body_language_score',
+         label: 'Body Language',
+         value: sessionData.body_language_score || 0,
+         strengthText: 'Body language looked confident and professional.',
+         improveText: 'Maintain steady eye contact and posture to improve confidence perception.',
+      },
+   ];
+
+   const sortedMetrics = [...metricDefinitions].sort((a, b) => b.value - a.value);
+   const topStrengths = sortedMetrics.filter((item) => item.value >= 70).slice(0, 2);
+   const improvementAreas = [...metricDefinitions]
+      .sort((a, b) => a.value - b.value)
+      .filter((item) => item.value < 70)
+      .slice(0, 2);
+
   const radarData = [
     { subject: 'Technical', A: sessionData.technical_score || 0, fullMark: 100 },
     { subject: 'Communication', A: sessionData.communication_score || 0, fullMark: 100 },
     { subject: 'Problem Solving', A: sessionData.problem_solving_score || 0, fullMark: 100 },
-    { subject: 'Confidence', A: sessionData.confidence_score || 0, fullMark: 100 },
     { subject: 'Body Language', A: sessionData.body_language_score || 0, fullMark: 100 },
   ];
 
@@ -60,6 +91,26 @@ const InterviewFeedback = () => {
   try { questionsParsed = JSON.parse(sessionData.questions || '[]'); } catch(e) {}
   try { answersParsed = JSON.parse(sessionData.answers || '[]'); } catch(e) {}
   try { feedbacksParsed = JSON.parse(sessionData.per_question_feedback || '[]'); } catch(e) {}
+
+   const normalizeFeedbackEntry = (entry) => {
+      if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+         return {
+            feedback: entry.feedback || 'Acceptable answer.',
+            technical_score: Number.isFinite(Number(entry.technical_score)) ? Number(entry.technical_score) : null,
+            communication_score: Number.isFinite(Number(entry.communication_score)) ? Number(entry.communication_score) : null,
+            problem_solving_score: Number.isFinite(Number(entry.problem_solving_score)) ? Number(entry.problem_solving_score) : null,
+            confidence_score: Number.isFinite(Number(entry.confidence_score)) ? Number(entry.confidence_score) : null,
+         };
+      }
+
+      return {
+         feedback: String(entry || 'Acceptable answer.'),
+         technical_score: null,
+         communication_score: null,
+         problem_solving_score: null,
+         confidence_score: null,
+      };
+   };
 
   const finalScore = sessionData.final_score || 0;
   
@@ -172,14 +223,15 @@ const InterviewFeedback = () => {
               <div>
                 <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2"><ThumbsUp className="w-5 h-5 text-emerald-500" /> Key Strengths</h2>
                 <ul className="space-y-3">
-                   <li className="flex items-start gap-3 bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-lg text-emerald-100 text-sm">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-                      {finalScore > 75 ? "Excellent grasp of core programming concepts demonstrated during the session." : "You communicated clearly on foundational topics."}
-                   </li>
-                   {sessionData.body_language_score > 70 && (
+                   {topStrengths.length > 0 ? topStrengths.map((item) => (
                      <li className="flex items-start gap-3 bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-lg text-emerald-100 text-sm">
                         <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-                        Maintained a professional posture and good eye contact.
+                        {item.strengthText} ({item.label}: {item.value}%)
+                     </li>
+                   )) : (
+                     <li className="flex items-start gap-3 bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-lg text-emerald-100 text-sm">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                        You completed the interview flow. Continue practicing to build consistency across all metrics.
                      </li>
                    )}
                 </ul>
@@ -188,22 +240,15 @@ const InterviewFeedback = () => {
               <div>
                 <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2"><AlertCircle className="w-5 h-5 text-red-500" /> Areas for Improvement</h2>
                 <ul className="space-y-3">
-                   {sessionData.technical_score < 70 && (
+                   {improvementAreas.length > 0 ? improvementAreas.map((item) => (
                      <li className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 p-3 rounded-lg text-red-100 text-sm">
                         <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
-                        Brushing up on advanced depth in technical implementations is recommended.
+                        {item.improveText} ({item.label}: {item.value}%)
                      </li>
-                   )}
-                   {sessionData.body_language_score < 60 && (
-                     <li className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 p-3 rounded-lg text-red-100 text-sm">
-                        <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
-                        Avoid looking away frequently; maintaining eye-level contact boosts confidence perception.
-                     </li>
-                   )}
-                   {sessionData.final_score > 80 && sessionData.technical_score >= 70 && sessionData.body_language_score >= 60 && (
+                   )) : (
                      <li className="flex items-start gap-3 bg-blue-500/10 border border-blue-500/20 p-3 rounded-lg text-blue-100 text-sm">
                         <Award className="w-5 h-5 text-blue-500 shrink-0" />
-                        Overall performance was stellar. Keep practicing edge cases to perfect your algorithm speed!
+                        No low-score areas found in this session. Focus on consistency and tougher mock scenarios.
                      </li>
                    )}
                 </ul>
@@ -223,6 +268,10 @@ const InterviewFeedback = () => {
                        <h3 className="text-lg font-bold text-white">{q}</h3>
                     </div>
                     <div className="ml-12 space-y-4">
+                       {(() => {
+                          const entry = normalizeFeedbackEntry(feedbacksParsed[idx]);
+                          return (
+                            <>
                        <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 text-sm text-slate-300">
                           <span className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Your Answer</span>
                           {answersParsed[idx] || "No answer recorded."}
@@ -230,8 +279,19 @@ const InterviewFeedback = () => {
                        
                        <div className="bg-indigo-900/20 p-4 rounded-xl border border-indigo-500/20 text-sm text-indigo-100">
                           <span className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-2 flex items-center gap-1"><Zap className="w-3 h-3"/> AI Feedback</span>
-                          {feedbacksParsed[idx] || "Acceptable answer."}
+                          {entry.feedback}
+                          {(entry.technical_score !== null || entry.communication_score !== null || entry.problem_solving_score !== null || entry.confidence_score !== null) && (
+                            <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                              {entry.technical_score !== null && <span className="px-2 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-200">Tech: {entry.technical_score}%</span>}
+                              {entry.communication_score !== null && <span className="px-2 py-1 rounded-full bg-purple-500/20 border border-purple-400/30 text-purple-200">Comm: {entry.communication_score}%</span>}
+                              {entry.problem_solving_score !== null && <span className="px-2 py-1 rounded-full bg-amber-500/20 border border-amber-400/30 text-amber-200">Logic: {entry.problem_solving_score}%</span>}
+                              {entry.confidence_score !== null && <span className="px-2 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-200">Confidence: {entry.confidence_score}%</span>}
+                            </div>
+                          )}
                        </div>
+                            </>
+                          );
+                       })()}
                     </div>
                  </div>
               ))}

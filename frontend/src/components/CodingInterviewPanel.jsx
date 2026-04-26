@@ -19,7 +19,7 @@ const CodingInterviewPanel = ({ question, language, setLanguage, onCodeSubmit })
       });
       setResult(res.data);
       onCodeSubmit(res.data);
-    } catch (err) {
+    } catch {
       setResult({ is_correct: false, feedback: 'Validation service failed.' });
     } finally {
       setEvaluating(false);

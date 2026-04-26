@@ -33,7 +33,7 @@ const Chatbot = () => {
       const response = await api.post('/interview/chat', { message: userText });
       const botReply = response.data.reply;
       setMessages(prev => [...prev, { text: botReply, isBot: true }]);
-    } catch (err) {
+    } catch {
       setMessages(prev => [...prev, { text: "Sorry, I'm having trouble connecting right now.", isBot: true }]);
     } finally {
       setLoading(false);
@@ -41,7 +41,7 @@ const Chatbot = () => {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-[100] flex flex-col items-end">
+    <div className="fixed bottom-6 right-6 z-100 flex flex-col items-end">
       {/* Chat Window */}
       <AnimatePresence>
         {isOpen && (
@@ -50,7 +50,7 @@ const Chatbot = () => {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.8, y: 20 }}
             transition={{ type: "spring", stiffness: 300, damping: 25 }}
-            className="mb-4 w-[calc(100vw-3rem)] sm:w-[380px] h-[520px] max-h-[calc(100vh-120px)] bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col origin-bottom-right"
+            className="mb-4 w-[calc(100vw-3rem)] sm:w-96 h-130 max-h-[calc(100vh-120px)] bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col origin-bottom-right"
           >
             {/* Header */}
             <div className="bg-linear-to-r from-blue-600 to-indigo-600 dark:from-cyan-600 dark:to-blue-700 p-4 flex justify-between items-center text-white relative overflow-hidden shrink-0">
@@ -126,7 +126,7 @@ const Chatbot = () => {
                 disabled={loading || !input.trim()}
                 className="p-3 bg-blue-600 hover:bg-blue-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 disabled:bg-slate-400 dark:disabled:bg-slate-700 text-white rounded-xl transition-colors flex items-center justify-center shrink-0 disabled:cursor-not-allowed shadow-lg active:scale-95"
               >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 ml-[-2px] mt-[1px]" />}
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 -ml-0.5 mt-px" />}
               </button>
             </form>
           </motion.div>

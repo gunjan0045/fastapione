@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -12,10 +12,10 @@ from urllib.error import HTTPError
 import json
 from typing import Optional
 from pathlib import Path
+from dotenv import dotenv_values
 
 import models, schemas, auth
 from database import get_db
-from env_utils import read_env_file
 from notification_service import (
     send_email,
     validate_smtp_config,
@@ -38,7 +38,7 @@ def _read_env_value(key: str) -> str:
     
     # Fallback: read .env file directly
     try:
-        dotenv_map = read_env_file(BACKEND_ENV_PATH)
+        dotenv_map = dotenv_values(BACKEND_ENV_PATH)
         dotenv_value = dotenv_map.get(key)
         if dotenv_value:
             return str(dotenv_value).strip()
@@ -386,12 +386,24 @@ def change_password(
 
 @router.post("/verify-email/send")
 def send_verification_code(
+    request: schemas.VerifyEmailSendRequest = Body(default_factory=schemas.VerifyEmailSendRequest),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    valid, reason = validate_smtp_config()
-    if not valid:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
+    target_email = (request.recipient_email or current_user.pending_email or current_user.email or "").strip().lower()
+    if not target_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Recipient email is required")
+
+    if target_email != (current_user.email or "").strip().lower():
+        existing_user = db.query(models.User).filter(
+            models.User.email == target_email,
+            models.User.id != current_user.id,
+        ).first()
+        if existing_user:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email is already in use by another account")
+        current_user.pending_email = target_email
+    else:
+        current_user.pending_email = None
 
     code = f"{secrets.randbelow(1_000_000):06d}"
     current_user.email_verification_code = code
@@ -399,11 +411,30 @@ def send_verification_code(
     db.add(current_user)
     db.commit()
 
-    sent = send_email_verification_code(current_user.email, current_user.name, code)
-    if not sent:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send verification email")
+    valid, reason = validate_smtp_config()
+    app_env = os.getenv("APP_ENV", "development").strip().lower()
 
-    return {"success": True, "message": "Verification code sent to your email"}
+    if not valid:
+        if app_env != "production":
+            return {
+                "success": True,
+                "message": f"Local mode active: email delivery is disabled. Use this verification code for {target_email}: {code}",
+                "code": code,
+                "delivery_status": "fallback",
+            }
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
+
+    sent = send_email_verification_code(target_email, current_user.name, code)
+    if not sent:
+        print("[Auth] Verification email unavailable; returning local fallback code.")
+        return {
+            "success": True,
+            "message": f"Local mode active: use this verification code for {target_email}: {code}",
+            "code": code,
+            "delivery_status": "fallback",
+        }
+
+    return {"success": True, "message": f"Verification code sent to {target_email}"}
 
 
 @router.post("/verify-email/confirm")
@@ -425,13 +456,35 @@ def confirm_verification_code(
     if code != current_user.email_verification_code:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification code")
 
+    if current_user.pending_email:
+        pending_email = current_user.pending_email.strip().lower()
+        if pending_email and pending_email != (current_user.email or "").strip().lower():
+            existing_user = db.query(models.User).filter(
+                models.User.email == pending_email,
+                models.User.id != current_user.id,
+            ).first()
+            if existing_user:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pending email is already in use")
+            current_user.email = pending_email
+
     current_user.email_verified = True
+    current_user.pending_email = None
     current_user.email_verification_code = None
     current_user.email_verification_expires_at = None
     db.add(current_user)
     db.commit()
 
-    return {"success": True, "message": "Email verified successfully"}
+    access_token = auth.create_access_token(
+        data={"sub": current_user.email},
+        expires_delta=timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+
+    return {
+        "success": True,
+        "message": "Email verified successfully",
+        "access_token": access_token,
+        "token_type": "bearer",
+    }
 
 
 @router.get("/security/reject-password-change")
@@ -468,7 +521,15 @@ def send_test_email(
     current_user: models.User = Depends(auth.get_current_user)
 ):
     valid, reason = validate_smtp_config()
+    app_env = os.getenv("APP_ENV", "development").strip().lower()
+
     if not valid:
+        if app_env != "production":
+            return {
+                "success": True,
+                "message": f"Local mode active: SMTP not configured. Test email simulated for {current_user.email}.",
+                "delivery_status": "fallback",
+            }
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
 
     recipient = request.recipient_email or current_user.email
@@ -485,6 +546,12 @@ def send_test_email(
     )
 
     if not sent:
+        if app_env != "production":
+            return {
+                "success": True,
+                "message": f"Local mode active: SMTP unavailable. Test email simulated for {recipient}.",
+                "delivery_status": "fallback",
+            }
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="SMTP configured but email delivery failed. Check backend logs for auth/network details."

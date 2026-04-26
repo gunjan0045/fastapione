@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { 
   X, UserCircle, Briefcase, GraduationCap, 
   Code2, Users, Award, Languages, Trophy, 
@@ -7,14 +7,37 @@ import {
   Mail, Phone, MapPin, Code, Link
 } from 'lucide-react';
 
-const SectionHeader = ({ icon: Icon, title }) => (
-  <div className="flex items-center gap-3 mb-4 border-b border-slate-100 dark:border-slate-800 pb-2">
-    <div className="p-2 bg-blue-50 dark:bg-cyan-500/10 rounded-lg text-blue-600 dark:text-cyan-400">
-      <Icon className="w-5 h-5" />
+const SectionHeader = ({ icon: IconComponent, title }) => {
+  if (!IconComponent) return null;
+  return (
+    <div className="flex items-center gap-3 mb-4 border-b border-slate-100 dark:border-slate-800 pb-2">
+      <div className="p-2 bg-blue-50 dark:bg-cyan-500/10 rounded-lg text-blue-600 dark:text-cyan-400">
+        <IconComponent className="w-5 h-5" />
+      </div>
+      <h3 className="text-lg font-bold text-slate-800 dark:text-white tracking-tight">{title}</h3>
     </div>
-    <h3 className="text-lg font-bold text-slate-800 dark:text-white tracking-tight">{title}</h3>
-  </div>
-);
+  );
+};
+
+const firstText = (...values) => {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return '';
+};
+
+const normalizeList = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    return value
+      .split(/[,\n]/)
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+};
 
 const ResumeDetailsModal = ({ isOpen, onClose, resume, onDelete }) => {
   // Lock body scroll when modal is open
@@ -29,16 +52,30 @@ const ResumeDetailsModal = ({ isOpen, onClose, resume, onDelete }) => {
 
   if (!resume) return null;
 
-  const parsed = resume.parsed_data || resume.extracted_data || {};
+  // Parse the data - handle both object and string formats
+  let parsed = {};
+  if (resume.parsed_data) {
+    if (typeof resume.parsed_data === 'string') {
+      try {
+        parsed = JSON.parse(resume.parsed_data);
+      } catch (e) {
+        console.warn('Failed to parse parsed_data:', e);
+        parsed = {};
+      }
+    } else {
+      parsed = resume.parsed_data;
+    }
+  }
   
   const renderList = (items, fallback = "Not specified") => {
-    if (!items || !Array.isArray(items) || items.length === 0) {
+    const normalizedItems = normalizeList(items);
+    if (!normalizedItems || normalizedItems.length === 0) {
       if (typeof items === 'string' && items.trim() !== '') return <p className="text-sm text-slate-600 dark:text-slate-300">{items}</p>;
       return <p className="text-sm text-slate-400 italic">{fallback}</p>;
     }
     return (
       <ul className="list-disc list-inside space-y-1 text-sm text-slate-600 dark:text-slate-300">
-        {items.map((item, idx) => (
+        {normalizedItems.map((item, idx) => (
           <li key={idx}>
             {typeof item === 'object' ? item.name || item.title || JSON.stringify(item) : item}
           </li>
@@ -85,7 +122,7 @@ const ResumeDetailsModal = ({ isOpen, onClose, resume, onDelete }) => {
                       {resume.name || resume.filename || 'Resume Overview'}
                     </h2>
                     <p className="text-xs text-slate-500 font-medium mt-0.5">
-                      Uploaded: {new Date(resume.created_at || Date.now()).toLocaleDateString()}
+                      Uploaded: {resume.created_at ? new Date(resume.created_at).toLocaleDateString() : 'N/A'}
                     </p>
                   </div>
                 </div>
@@ -102,26 +139,26 @@ const ResumeDetailsModal = ({ isOpen, onClose, resume, onDelete }) => {
                 <div className="flex items-center gap-2 mb-3">
                   <UserCircle className="w-5 h-5 text-blue-500 shrink-0" />
                   <h3 className="text-lg font-bold dark:text-white truncate">
-                    {parsed.name || parsed.fullName || "Candidate Name Not Found"}
+                    {firstText(parsed.name, parsed.fullName, resume.name, resume.filename, 'Candidate Name Not Found')}
                   </h3>
                 </div>
                 
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                     <Mail className="w-4 h-4 text-slate-400 shrink-0" />
-                    <span className="truncate">{parsed.email || "No email"}</span>
+                    <span className="truncate">{firstText(parsed.email, resume.email, "No email")}</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                     <Phone className="w-4 h-4 text-slate-400 shrink-0" />
-                    <span className="truncate">{parsed.phone || "No phone"}</span>
+                    <span className="truncate">{firstText(parsed.phone, resume.phone, "No phone")}</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                     <Link className="w-4 h-4 text-slate-400 shrink-0" />
-                    <span className="truncate">{parsed.linkedin || "No LinkedIn"}</span>
+                    <span className="truncate">{firstText(parsed.linkedin, parsed.linkedin_url, resume.linkedin_url, "No LinkedIn")}</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                     <Code className="w-4 h-4 text-slate-400 shrink-0" />
-                    <span className="truncate">{parsed.github || "No GitHub"}</span>
+                    <span className="truncate">{firstText(parsed.github, parsed.github_url, resume.github_url, "No GitHub")}</span>
                   </div>
                 </div>
               </div>
@@ -189,8 +226,8 @@ const ResumeDetailsModal = ({ isOpen, onClose, resume, onDelete }) => {
                   <div>
                     <SectionHeader icon={Code2} title="Technical Skills" />
                     <div className="flex flex-wrap gap-2">
-                      {Array.isArray(parsed.technical_skills) || Array.isArray(parsed.skills) ? (
-                         (parsed.technical_skills || parsed.skills).map((skill, idx) => (
+                      {normalizeList(parsed.technical_skills).length > 0 || normalizeList(parsed.skills).length > 0 || normalizeList(resume.skills).length > 0 ? (
+                         (normalizeList(parsed.technical_skills).length > 0 ? normalizeList(parsed.technical_skills) : normalizeList(parsed.skills).length > 0 ? normalizeList(parsed.skills) : normalizeList(resume.skills)).map((skill, idx) => (
                            <span key={idx} className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-sm">
                              {typeof skill === 'object' ? skill.name : skill}
                            </span>
@@ -203,8 +240,8 @@ const ResumeDetailsModal = ({ isOpen, onClose, resume, onDelete }) => {
                   <div>
                     <SectionHeader icon={Users} title="Personal Skills" />
                     <div className="flex flex-wrap gap-2">
-                      {Array.isArray(parsed.personal_skills) || Array.isArray(parsed.soft_skills) ? (
-                         (parsed.personal_skills || parsed.soft_skills).map((skill, idx) => (
+                      {normalizeList(parsed.personal_skills).length > 0 || normalizeList(parsed.soft_skills).length > 0 ? (
+                         (normalizeList(parsed.personal_skills).length > 0 ? normalizeList(parsed.personal_skills) : normalizeList(parsed.soft_skills)).map((skill, idx) => (
                            <span key={idx} className="px-2.5 py-1 bg-blue-50 dark:bg-cyan-900/20 text-blue-700 dark:text-cyan-300 border border-blue-100 dark:border-cyan-800/30 rounded-lg text-xs font-semibold shadow-sm">
                              {typeof skill === 'object' ? skill.name : skill}
                            </span>
